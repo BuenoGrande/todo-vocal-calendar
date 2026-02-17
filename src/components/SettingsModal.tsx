@@ -48,20 +48,6 @@ export default function SettingsModal({
             <p className="text-xs text-gray-400 mt-1">Used for voice transcription (Whisper) and AI features</p>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Google Client ID
-            </label>
-            <input
-              type="text"
-              value={local.googleClientId}
-              onChange={(e) => setLocal((s) => ({ ...s, googleClientId: e.target.value }))}
-              placeholder="xxxx.apps.googleusercontent.com"
-              className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
-            />
-            <p className="text-xs text-gray-400 mt-1">From Google Cloud Console &rarr; APIs &amp; Services &rarr; Credentials</p>
-          </div>
-
           <div className="pt-2">
             <div className="flex items-center justify-between">
               <div>
@@ -80,13 +66,10 @@ export default function SettingsModal({
               ) : (
                 <button
                   onClick={() => {
-                    if (local.googleClientId) {
-                      onSave(local)
-                      onConnectGoogle()
-                    }
+                    onSave(local)
+                    onConnectGoogle()
                   }}
-                  disabled={!local.googleClientId}
-                  className="px-3 py-1.5 text-sm rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                  className="px-3 py-1.5 text-sm rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 transition-colors cursor-pointer"
                 >
                   Connect
                 </button>

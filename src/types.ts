@@ -18,5 +18,4 @@ export interface CalendarEvent {
 
 export interface Settings {
   openaiApiKey: string
-  googleClientId: string
 }

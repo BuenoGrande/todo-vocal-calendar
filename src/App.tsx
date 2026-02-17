@@ -24,13 +24,14 @@ import CalendarView from './components/CalendarView'
 
 const EVENT_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6']
 const GOOGLE_EVENT_COLOR = '#34a853'
+const GOOGLE_CLIENT_ID = '1065090327076-lfesgc6ophb9pach2qbltrsvkb1kv4ba.apps.googleusercontent.com'
 
 function loadSettings(): Settings {
   try {
     const stored = localStorage.getItem('vtc-settings')
     if (stored) return JSON.parse(stored)
   } catch {}
-  return { openaiApiKey: '', googleClientId: '' }
+  return { openaiApiKey: '' }
 }
 
 function saveSettings(settings: Settings) {
@@ -65,7 +66,7 @@ export default function App() {
   // Google Calendar connect
   async function handleConnectGoogle() {
     try {
-      const token = await initGoogleAuth(settings.googleClientId)
+      const token = await initGoogleAuth(GOOGLE_CLIENT_ID)
       setGoogleToken(token)
       showToast('Connected to Google Calendar')
       // Fetch today's events
