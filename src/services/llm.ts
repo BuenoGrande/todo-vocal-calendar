@@ -2,14 +2,10 @@ import type { TodoItem, CalendarEvent } from '../types'
 
 export async function parseTasks(
   text: string,
-  apiKey: string,
 ): Promise<Omit<TodoItem, 'id' | 'priority'>[]> {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch('/api/chat', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: 'gpt-4o-mini',
       messages: [
@@ -42,7 +38,6 @@ Only return the JSON object, nothing else.`,
 export async function scheduleWithAI(
   todos: TodoItem[],
   existingEvents: CalendarEvent[],
-  apiKey: string,
 ): Promise<{ title: string; startTime: string; duration: number }[]> {
   const now = new Date()
   const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
@@ -58,12 +53,9 @@ export async function scheduleWithAI(
     duration: t.duration,
   }))
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch('/api/chat', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: 'gpt-4o-mini',
       messages: [

@@ -15,7 +15,3 @@ export interface CalendarEvent {
   isGoogleEvent?: boolean
   color: string
 }
-
-export interface Settings {
-  openaiApiKey: string
-}

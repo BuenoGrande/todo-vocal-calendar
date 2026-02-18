@@ -8,7 +8,7 @@ import {
   DragOverlay,
 } from '@dnd-kit/core'
 import { arrayMove } from '@dnd-kit/sortable'
-import type { TodoItem, CalendarEvent, Settings } from './types'
+import type { TodoItem, CalendarEvent } from './types'
 import { parseTasks, scheduleWithAI } from './services/llm'
 import {
   initGoogleAuth,
@@ -17,7 +17,7 @@ import {
   updateGoogleEvent,
   deleteGoogleEvent,
 } from './services/googleCalendar'
-import SettingsModal from './components/SettingsModal'
+import GoogleCalendarButton from './components/GoogleCalendarButton'
 import VoiceInput from './components/VoiceInput'
 import TodoList from './components/TodoList'
 import CalendarView from './components/CalendarView'
@@ -26,24 +26,10 @@ const EVENT_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3
 const GOOGLE_EVENT_COLOR = '#34a853'
 const GOOGLE_CLIENT_ID = '1065090327076-lfesgc6ophb9pach2qbltrsvkb1kv4ba.apps.googleusercontent.com'
 
-function loadSettings(): Settings {
-  try {
-    const stored = localStorage.getItem('vtc-settings')
-    if (stored) return JSON.parse(stored)
-  } catch {}
-  return { openaiApiKey: '' }
-}
-
-function saveSettings(settings: Settings) {
-  localStorage.setItem('vtc-settings', JSON.stringify(settings))
-}
-
 export default function App() {
   const [todos, setTodos] = useState<TodoItem[]>([])
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([])
-  const [settings, setSettings] = useState<Settings>(loadSettings)
   const [googleToken, setGoogleToken] = useState<string | null>(null)
-  const [showSettings, setShowSettings] = useState(false)
   const [isScheduling, setIsScheduling] = useState(false)
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
@@ -55,12 +41,6 @@ export default function App() {
   function showToast(msg: string) {
     setToast(msg)
     setTimeout(() => setToast(null), 3000)
-  }
-
-  // Persist settings
-  function handleSaveSettings(s: Settings) {
-    setSettings(s)
-    saveSettings(s)
   }
 
   // Google Calendar connect
@@ -122,10 +102,9 @@ export default function App() {
   // Voice transcription handler
   const handleTranscription = useCallback(
     async (text: string) => {
-      if (!settings.openaiApiKey) return
       try {
         showToast('Parsing tasks...')
-        const tasks = await parseTasks(text, settings.openaiApiKey)
+        const tasks = await parseTasks(text)
         const newTodos: TodoItem[] = tasks.map((t, i) => ({
           id: crypto.randomUUID(),
           title: t.title,
@@ -139,15 +118,15 @@ export default function App() {
         showToast(`Parsing failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
       }
     },
-    [settings.openaiApiKey, todos.length],
+    [todos.length],
   )
 
   // AI scheduling
   async function handleAISchedule() {
-    if (!settings.openaiApiKey || todos.length === 0) return
+    if (todos.length === 0) return
     setIsScheduling(true)
     try {
-      const schedule = await scheduleWithAI(todos, calendarEvents, settings.openaiApiKey)
+      const schedule = await scheduleWithAI(todos, calendarEvents)
       const newEvents: CalendarEvent[] = []
       const scheduledTodoIds: string[] = []
 
@@ -346,15 +325,11 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2">
-            <VoiceInput
-              onTranscription={handleTranscription}
-              disabled={!settings.openaiApiKey}
-              apiKey={settings.openaiApiKey}
-            />
+            <VoiceInput onTranscription={handleTranscription} />
 
             <button
               onClick={handleAISchedule}
-              disabled={!settings.openaiApiKey || todos.length === 0 || isScheduling}
+              disabled={todos.length === 0 || isScheduling}
               title="AI auto-schedule all tasks"
               className="h-9 px-3 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-500 text-white text-sm font-medium hover:from-violet-600 hover:to-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1.5 cursor-pointer"
             >
@@ -371,27 +346,11 @@ export default function App() {
               AI Schedule
             </button>
 
-            {googleToken && (
-              <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-green-50 border border-green-200">
-                <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                <span className="text-xs text-green-700 font-medium">Google</span>
-              </div>
-            )}
-
-            <button
-              onClick={() => setShowSettings(true)}
-              className="w-9 h-9 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 flex items-center justify-center transition-colors cursor-pointer"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </button>
+            <GoogleCalendarButton
+              connected={!!googleToken}
+              onConnect={handleConnectGoogle}
+              onDisconnect={handleDisconnectGoogle}
+            />
           </div>
         </header>
 
@@ -423,17 +382,12 @@ export default function App() {
           </div>
         </div>
 
-        {/* Settings modal */}
-        {showSettings && (
-          <SettingsModal
-            settings={settings}
-            onSave={handleSaveSettings}
-            onClose={() => setShowSettings(false)}
-            googleConnected={!!googleToken}
-            onConnectGoogle={handleConnectGoogle}
-            onDisconnectGoogle={handleDisconnectGoogle}
-          />
-        )}
+        {/* Privacy policy link */}
+        <div className="fixed bottom-2 right-4 z-40">
+          <a href="/privacy.html" target="_blank" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
+            Privacy Policy
+          </a>
+        </div>
 
         {/* Toast */}
         {toast && (

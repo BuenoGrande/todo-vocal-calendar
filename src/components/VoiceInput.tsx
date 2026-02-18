@@ -2,11 +2,9 @@ import { useState, useRef, useCallback } from 'react'
 
 interface VoiceInputProps {
   onTranscription: (text: string) => void
-  disabled: boolean
-  apiKey: string
 }
 
-export default function VoiceInput({ onTranscription, disabled, apiKey }: VoiceInputProps) {
+export default function VoiceInput({ onTranscription }: VoiceInputProps) {
   const [isRecording, setIsRecording] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -32,7 +30,7 @@ export default function VoiceInput({ onTranscription, disabled, apiKey }: VoiceI
         setIsProcessing(true)
         try {
           const { transcribe } = await import('../services/whisper')
-          const text = await transcribe(audioBlob, apiKey)
+          const text = await transcribe(audioBlob)
           if (text.trim()) onTranscription(text)
         } catch (err) {
           console.error('Transcription error:', err)
@@ -48,7 +46,7 @@ export default function VoiceInput({ onTranscription, disabled, apiKey }: VoiceI
       console.error('Microphone access error:', err)
       alert('Could not access microphone. Please check permissions.')
     }
-  }, [apiKey, onTranscription])
+  }, [onTranscription])
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current?.state === 'recording') {
@@ -65,14 +63,8 @@ export default function VoiceInput({ onTranscription, disabled, apiKey }: VoiceI
   return (
     <button
       onClick={toggleRecording}
-      disabled={disabled || isProcessing}
-      title={
-        disabled
-          ? 'Add OpenAI API key in settings'
-          : isRecording
-            ? 'Stop recording'
-            : 'Start recording'
-      }
+      disabled={isProcessing}
+      title={isRecording ? 'Stop recording' : 'Start recording'}
       className={`relative w-11 h-11 rounded-full flex items-center justify-center transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
         isRecording
           ? 'bg-red-500 text-white recording-pulse'
