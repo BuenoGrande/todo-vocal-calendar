@@ -13,5 +13,6 @@ export interface CalendarEvent {
   todoId?: string
   googleEventId?: string
   isGoogleEvent?: boolean
+  completed?: boolean
   color: string
 }

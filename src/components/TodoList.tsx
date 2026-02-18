@@ -14,6 +14,42 @@ interface TodoListProps {
   onDeleteTodo: (id: string) => void
 }
 
+function DurationStepper({
+  value,
+  onChange,
+  small,
+}: {
+  value: number
+  onChange: (v: number) => void
+  small?: boolean
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        onClick={() => onChange(Math.max(5, value - 5))}
+        className={`flex items-center justify-center rounded-md bg-gray-100 hover:bg-gray-200 text-gray-500 transition-colors cursor-pointer ${small ? 'w-6 h-6' : 'w-7 h-7'}`}
+      >
+        <svg className={small ? 'w-3 h-3' : 'w-3.5 h-3.5'} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+        </svg>
+      </button>
+      <span className={`font-medium text-gray-700 text-center tabular-nums ${small ? 'text-xs w-10' : 'text-sm w-12'}`}>
+        {value}m
+      </span>
+      <button
+        type="button"
+        onClick={() => onChange(value + 5)}
+        className={`flex items-center justify-center rounded-md bg-gray-100 hover:bg-gray-200 text-gray-500 transition-colors cursor-pointer ${small ? 'w-6 h-6' : 'w-7 h-7'}`}
+      >
+        <svg className={small ? 'w-3 h-3' : 'w-3.5 h-3.5'} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+        </svg>
+      </button>
+    </div>
+  )
+}
+
 function SortableTodoItem({
   todo,
   onUpdate,
@@ -25,7 +61,7 @@ function SortableTodoItem({
 }) {
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState(todo.title)
-  const [editDuration, setEditDuration] = useState(String(todo.duration))
+  const [editDuration, setEditDuration] = useState(todo.duration)
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: todo.id })
@@ -37,10 +73,10 @@ function SortableTodoItem({
   }
 
   function saveEdit() {
-    const dur = parseInt(editDuration, 10)
+    const rounded = Math.max(5, Math.round(editDuration / 5) * 5)
     onUpdate({
       title: editTitle.trim() || todo.title,
-      duration: dur > 0 ? dur : todo.duration,
+      duration: rounded,
     })
     setIsEditing(false)
   }
@@ -49,7 +85,7 @@ function SortableTodoItem({
     <div
       ref={setNodeRef}
       style={style}
-      className={`group flex items-center gap-2 px-3 py-2.5 bg-white rounded-xl border border-gray-100 hover:border-gray-200 shadow-sm transition-all ${isDragging ? 'shadow-lg z-10' : ''}`}
+      className={`group flex items-center gap-2 px-3 py-2.5 bg-white rounded-xl border border-gray-100 shadow-sm transition-all hover:shadow-md hover:-translate-y-px ${isDragging ? 'shadow-lg z-10' : ''}`}
     >
       {/* Drag handle */}
       <button
@@ -76,15 +112,7 @@ function SortableTodoItem({
             className="flex-1 px-2 py-1 text-sm rounded border border-gray-200 focus:outline-none focus:border-indigo-400"
             autoFocus
           />
-          <input
-            value={editDuration}
-            onChange={(e) => setEditDuration(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && saveEdit()}
-            type="number"
-            min="1"
-            className="w-14 px-2 py-1 text-sm rounded border border-gray-200 focus:outline-none focus:border-indigo-400 text-center"
-          />
-          <span className="text-xs text-gray-400">min</span>
+          <DurationStepper value={editDuration} onChange={setEditDuration} small />
           <button
             onClick={saveEdit}
             className="text-indigo-500 hover:text-indigo-600 cursor-pointer"
@@ -98,11 +126,15 @@ function SortableTodoItem({
         <>
           <div
             className="flex-1 min-w-0 cursor-pointer"
-            onClick={() => setIsEditing(true)}
+            onClick={() => {
+              setEditTitle(todo.title)
+              setEditDuration(todo.duration)
+              setIsEditing(true)
+            }}
           >
             <p className="text-sm text-gray-800 truncate">{todo.title}</p>
           </div>
-          <span className="flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600">
+          <span className="flex-shrink-0 text-xs font-medium px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600">
             {todo.duration}m
           </span>
           <button
@@ -121,47 +153,38 @@ function SortableTodoItem({
 
 export default function TodoList({ todos, onAddTodo, onUpdateTodo, onDeleteTodo }: TodoListProps) {
   const [newTask, setNewTask] = useState('')
-  const [newDuration, setNewDuration] = useState('30')
+  const [newDuration, setNewDuration] = useState(30)
 
   function handleAdd() {
     const title = newTask.trim()
     if (!title) return
-    const dur = parseInt(newDuration, 10)
-    onAddTodo(title, dur > 0 ? dur : 30)
+    const dur = Math.max(5, Math.round(newDuration / 5) * 5)
+    onAddTodo(title, dur)
     setNewTask('')
-    setNewDuration('30')
+    setNewDuration(30)
   }
 
   return (
     <div className="flex flex-col h-full">
-      {/* Add task input */}
-      <div className="flex items-center gap-2 mb-4">
+      {/* Add task card */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-3 mb-4">
         <input
           value={newTask}
           onChange={(e) => setNewTask(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
           placeholder="Add a task..."
-          className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all"
+          className="w-full px-1 py-1.5 text-sm bg-transparent focus:outline-none placeholder-gray-400"
         />
-        <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl px-2 py-1.5">
-          <input
-            value={newDuration}
-            onChange={(e) => setNewDuration(e.target.value)}
-            type="number"
-            min="1"
-            className="w-10 text-sm text-center focus:outline-none"
-          />
-          <span className="text-xs text-gray-400">min</span>
+        <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
+          <DurationStepper value={newDuration} onChange={setNewDuration} />
+          <button
+            onClick={handleAdd}
+            disabled={!newTask.trim()}
+            className="px-4 py-1.5 rounded-full bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+          >
+            Add
+          </button>
         </div>
-        <button
-          onClick={handleAdd}
-          disabled={!newTask.trim()}
-          className="w-9 h-9 rounded-xl bg-indigo-500 text-white flex items-center justify-center hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0 cursor-pointer"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-        </button>
       </div>
 
       {/* Todo list */}

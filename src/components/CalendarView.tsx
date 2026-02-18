@@ -2,15 +2,16 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import type { CalendarEvent } from '../types'
 
-const HOUR_HEIGHT = 72
+const HOUR_HEIGHT = 96
 const START_HOUR = 6
 const END_HOUR = 23
-const SLOT_MINUTES = 15
+const SLOT_MINUTES = 5
 
 interface CalendarViewProps {
   events: CalendarEvent[]
   onEventUpdate: (id: string, updates: Partial<CalendarEvent>) => void
   onEventDelete: (id: string) => void
+  onReschedule?: (event: CalendarEvent) => void
 }
 
 function formatHour(hour: number): string {
@@ -58,10 +59,40 @@ function CurrentTimeLine() {
   )
 }
 
+function CompletionCheckbox({
+  checked,
+  onChange,
+}: {
+  checked: boolean
+  onChange: (val: boolean) => void
+}) {
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation()
+        onChange(!checked)
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+      className={`flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${
+        checked
+          ? 'bg-emerald-500 border-emerald-500 completion-check'
+          : 'border-gray-300 hover:border-gray-400'
+      }`}
+    >
+      {checked && (
+        <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+        </svg>
+      )}
+    </button>
+  )
+}
+
 export default function CalendarView({
   events,
   onEventUpdate,
   onEventDelete,
+  onReschedule,
 }: CalendarViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [dragState, setDragState] = useState<{
@@ -71,6 +102,12 @@ export default function CalendarView({
     originalStart: Date
     originalEnd: Date
   } | null>(null)
+  const [now, setNow] = useState(new Date())
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 30000)
+    return () => clearInterval(interval)
+  }, [])
 
   const hours = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i)
 
@@ -86,12 +123,18 @@ export default function CalendarView({
     }
   }
 
+  const slotHeight = (SLOT_MINUTES / 60) * HOUR_HEIGHT
+
   function getEventStyle(event: CalendarEvent) {
     const startMin = event.start.getHours() * 60 + event.start.getMinutes()
     const endMin = event.end.getHours() * 60 + event.end.getMinutes()
     const top = ((startMin - START_HOUR * 60) / 60) * HOUR_HEIGHT
-    const height = Math.max(((endMin - startMin) / 60) * HOUR_HEIGHT, HOUR_HEIGHT / 4)
+    const height = Math.max(((endMin - startMin) / 60) * HOUR_HEIGHT, slotHeight)
     return { top, height }
+  }
+
+  function isOverdue(event: CalendarEvent): boolean {
+    return event.end < now && !event.completed && !event.isGoogleEvent
   }
 
   function handleEventMouseDown(
@@ -208,7 +251,7 @@ export default function CalendarView({
                 id={slot.id}
                 style={{
                   top,
-                  height: HOUR_HEIGHT / 4,
+                  height: slotHeight,
                   left: 48,
                   right: 0,
                 }}
@@ -220,14 +263,18 @@ export default function CalendarView({
           {events.map((event) => {
             const pos = getEventStyle(event)
             const isBeingDragged = dragState?.eventId === event.id
+            const overdue = isOverdue(event)
+            const completed = event.completed ?? false
             return (
               <div
                 key={event.id}
-                className={`absolute left-12 right-2 rounded-lg px-3 py-1.5 select-none transition-shadow ${
+                className={`group absolute left-12 right-2 rounded-lg px-3 py-1.5 select-none transition-all ${
                   event.isGoogleEvent
                     ? 'cursor-default'
                     : 'cursor-grab active:cursor-grabbing'
-                } ${isBeingDragged ? 'shadow-lg z-30 ring-2 ring-indigo-400/40' : 'shadow-sm z-10'}`}
+                } ${isBeingDragged ? 'shadow-lg z-30 ring-2 ring-indigo-400/40' : 'shadow-sm z-10'} ${
+                  completed ? 'opacity-50' : ''
+                } ${overdue ? 'ring-1 ring-amber-400/60' : ''}`}
                 style={{
                   top: pos.top,
                   height: pos.height,
@@ -238,30 +285,60 @@ export default function CalendarView({
                 onMouseDown={(e) => handleEventMouseDown(e, event.id, 'move')}
               >
                 <div className="flex items-start justify-between gap-1">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-medium text-gray-800 truncate leading-tight">
-                      {event.title}
-                    </p>
-                    {pos.height > 36 && (
-                      <p className="text-[10px] text-gray-500 mt-0.5">
-                        {formatTime(event.start)} - {formatTime(event.end)}
+                  <div className="flex items-start gap-1.5 min-w-0 flex-1">
+                    {/* Completion checkbox */}
+                    {!event.isGoogleEvent && (
+                      <div className="mt-0.5">
+                        <CompletionCheckbox
+                          checked={completed}
+                          onChange={(val) => onEventUpdate(event.id, { completed: val })}
+                        />
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-xs font-medium text-gray-800 truncate leading-tight ${completed ? 'line-through text-gray-400' : ''}`}>
+                        {event.title}
                       </p>
+                      {pos.height > 36 && (
+                        <p className="text-[10px] text-gray-500 mt-0.5">
+                          {formatTime(event.start)} - {formatTime(event.end)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-0.5 flex-shrink-0">
+                    {/* Reschedule button for overdue */}
+                    {overdue && onReschedule && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onReschedule(event)
+                        }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        title="Move back to tasks"
+                        className="text-amber-500 hover:text-amber-600 transition-colors cursor-pointer mt-0.5"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      </button>
+                    )}
+                    {/* Delete button */}
+                    {!event.isGoogleEvent && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onEventDelete(event.id)
+                        }}
+                        className="opacity-0 group-hover:opacity-100 hover:!opacity-100 text-gray-400 hover:text-red-400 transition-opacity flex-shrink-0 mt-0.5 cursor-pointer"
+                        onMouseDown={(e) => e.stopPropagation()}
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
                     )}
                   </div>
-                  {!event.isGoogleEvent && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onEventDelete(event.id)
-                      }}
-                      className="opacity-0 group-hover:opacity-100 hover:!opacity-100 text-gray-400 hover:text-red-400 transition-opacity flex-shrink-0 mt-0.5 cursor-pointer"
-                      onMouseDown={(e) => e.stopPropagation()}
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  )}
                 </div>
 
                 {/* Resize handle */}

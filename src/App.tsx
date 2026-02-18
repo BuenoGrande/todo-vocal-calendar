@@ -208,6 +208,33 @@ export default function App() {
     [calendarEvents, googleToken],
   )
 
+  // Reschedule: move calendar event back to todo list
+  const handleReschedule = useCallback(
+    async (event: CalendarEvent) => {
+      // Delete from Google Calendar if synced
+      if (event.googleEventId && googleToken && !event.isGoogleEvent) {
+        try {
+          await deleteGoogleEvent(googleToken, event.googleEventId)
+        } catch (err) {
+          console.error('Failed to delete Google event:', err)
+        }
+      }
+      // Remove from calendar
+      setCalendarEvents((prev) => prev.filter((e) => e.id !== event.id))
+      // Create new todo
+      const duration = Math.round((event.end.getTime() - event.start.getTime()) / 60000)
+      const newTodo: TodoItem = {
+        id: crypto.randomUUID(),
+        title: event.title,
+        duration,
+        priority: todos.length,
+      }
+      setTodos((prev) => [...prev, newTodo])
+      showToast(`"${event.title}" moved back to tasks`)
+    },
+    [googleToken, todos.length],
+  )
+
   // DnD handlers
   function handleDragStart(event: { active: { id: string | number } }) {
     setActiveDragId(String(event.active.id))
@@ -308,7 +335,7 @@ export default function App() {
       onDragEnd={handleDragEnd}
     >
       <div className="h-screen flex flex-col bg-slate-50 font-sans">
-        {/* Header */}
+        {/* Header — minimal */}
         <header className="flex items-center justify-between px-5 py-3 bg-white border-b border-gray-100 shadow-sm">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center">
@@ -324,34 +351,11 @@ export default function App() {
             <h1 className="text-base font-semibold text-gray-900">Voice Todo Calendar</h1>
           </div>
 
-          <div className="flex items-center gap-2">
-            <VoiceInput onTranscription={handleTranscription} />
-
-            <button
-              onClick={handleAISchedule}
-              disabled={todos.length === 0 || isScheduling}
-              title="AI auto-schedule all tasks"
-              className="h-9 px-3 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-500 text-white text-sm font-medium hover:from-violet-600 hover:to-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              {isScheduling ? (
-                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-              ) : (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              )}
-              AI Schedule
-            </button>
-
-            <GoogleCalendarButton
-              connected={!!googleToken}
-              onConnect={handleConnectGoogle}
-              onDisconnect={handleDisconnectGoogle}
-            />
-          </div>
+          <GoogleCalendarButton
+            connected={!!googleToken}
+            onConnect={handleConnectGoogle}
+            onDisconnect={handleDisconnectGoogle}
+          />
         </header>
 
         {/* Main content */}
@@ -364,6 +368,30 @@ export default function App() {
                 {todos.length} {todos.length === 1 ? 'task' : 'tasks'}
               </span>
             </div>
+
+            {/* Voice input + AI Schedule */}
+            <div className="flex items-center gap-2 mb-4">
+              <VoiceInput onTranscription={handleTranscription} />
+              <button
+                onClick={handleAISchedule}
+                disabled={todos.length === 0 || isScheduling}
+                title="AI auto-schedule all tasks"
+                className="flex-1 h-9 px-3 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-500 text-white text-sm font-medium hover:from-violet-600 hover:to-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                {isScheduling ? (
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                )}
+                AI Schedule
+              </button>
+            </div>
+
             <TodoList
               todos={todos}
               onAddTodo={handleAddTodo}
@@ -378,6 +406,7 @@ export default function App() {
               events={calendarEvents}
               onEventUpdate={handleEventUpdate}
               onEventDelete={handleEventDelete}
+              onReschedule={handleReschedule}
             />
           </div>
         </div>
