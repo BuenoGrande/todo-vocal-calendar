@@ -62,9 +62,11 @@ function CurrentTimeLine() {
 function CompletionCheckbox({
   checked,
   onChange,
+  color,
 }: {
   checked: boolean
   onChange: (val: boolean) => void
+  color: string
 }) {
   return (
     <button
@@ -73,14 +75,18 @@ function CompletionCheckbox({
         onChange(!checked)
       }}
       onMouseDown={(e) => e.stopPropagation()}
-      className={`flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${
+      className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${
         checked
-          ? 'bg-emerald-500 border-emerald-500 completion-check'
-          : 'border-gray-300 hover:border-gray-400'
+          ? 'completion-check'
+          : 'hover:scale-110'
       }`}
+      style={{
+        borderColor: checked ? color : undefined,
+        backgroundColor: checked ? color : undefined,
+      }}
     >
       {checked && (
-        <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
         </svg>
       )}
@@ -285,13 +291,14 @@ export default function CalendarView({
                 onMouseDown={(e) => handleEventMouseDown(e, event.id, 'move')}
               >
                 <div className="flex items-start justify-between gap-1">
-                  <div className="flex items-start gap-1.5 min-w-0 flex-1">
+                  <div className="flex items-start gap-2 min-w-0 flex-1">
                     {/* Completion checkbox */}
                     {!event.isGoogleEvent && (
-                      <div className="mt-0.5">
+                      <div className="mt-px">
                         <CompletionCheckbox
                           checked={completed}
                           onChange={(val) => onEventUpdate(event.id, { completed: val })}
+                          color={event.color}
                         />
                       </div>
                     )}

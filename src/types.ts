@@ -3,6 +3,7 @@ export interface TodoItem {
   title: string
   duration: number // minutes
   priority: number
+  timePreference?: string // e.g. "morning", "after lunch", "before 3pm" — hidden from UI, used by scheduler
 }
 
 export interface CalendarEvent {

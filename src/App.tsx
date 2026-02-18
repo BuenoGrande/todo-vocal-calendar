@@ -105,20 +105,27 @@ export default function App() {
       try {
         showToast('Parsing tasks...')
         const tasks = await parseTasks(text)
-        const newTodos: TodoItem[] = tasks.map((t, i) => ({
+        // Sort by priority from LLM (1 = highest) before inserting
+        const sorted = [...tasks].sort((a, b) => a.priority - b.priority)
+        const newTodos: TodoItem[] = sorted.map((t, i) => ({
           id: crypto.randomUUID(),
           title: t.title,
           duration: t.duration,
-          priority: todos.length + i,
+          priority: i,
+          timePreference: t.timePreference,
         }))
-        setTodos((prev) => [...prev, ...newTodos])
+        // Prepend new tasks (higher priority) before existing ones, re-number existing
+        setTodos((prev) => {
+          const renumbered = prev.map((t, i) => ({ ...t, priority: newTodos.length + i }))
+          return [...newTodos, ...renumbered]
+        })
         showToast(`Added ${newTodos.length} task${newTodos.length !== 1 ? 's' : ''}`)
       } catch (err) {
         console.error('Task parsing error:', err)
         showToast(`Parsing failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
       }
     },
-    [todos.length],
+    [],
   )
 
   // AI scheduling
