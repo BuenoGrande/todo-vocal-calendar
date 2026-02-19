@@ -9,7 +9,7 @@ import {
 } from '@dnd-kit/core'
 import { arrayMove } from '@dnd-kit/sortable'
 import type { TodoItem, CalendarEvent, ViewMode } from './types'
-import { parseTasks, scheduleWithAI } from './services/llm'
+import { parseTasks } from './services/llm'
 import { scheduleLocally } from './services/localScheduler'
 import {
   fetchEventsForDateRange,
@@ -58,6 +58,12 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('1-day')
   const [completedToday, setCompletedToday] = useState(0)
   const [dataLoaded, setDataLoaded] = useState(false)
+  const [nextTaskSuggestion, setNextTaskSuggestion] = useState<{
+    taskName: string
+    taskId: string
+    freeFrom: Date
+    duration: number
+  } | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -108,10 +114,12 @@ export default function App() {
         const events = await fetchEvents(dateToString(start), dateToString(end))
         if (cancelled) return
         setCalendarEvents((prev) => {
-          // Keep google-origin events that may have been fetched, merge with DB events
+          // Keep google-origin events, but filter out duplicates of app-created events
           const googleEvents = prev.filter((e) => e.isGoogleEvent)
-          const dbIds = new Set(events.map((e) => e.id))
-          const nonConflictingGoogle = googleEvents.filter((e) => !dbIds.has(e.id))
+          const dbGoogleIds = new Set(events.filter((e) => e.googleEventId).map((e) => e.googleEventId))
+          const nonConflictingGoogle = googleEvents.filter(
+            (e) => !e.googleEventId || !dbGoogleIds.has(e.googleEventId),
+          )
           return [...events, ...nonConflictingGoogle]
         })
       } catch (err) {
@@ -152,7 +160,12 @@ export default function App() {
         )
         setCalendarEvents((prev) => {
           const nonGoogle = prev.filter((e) => !e.isGoogleEvent)
-          return [...nonGoogle, ...mapped]
+          // Filter out Google events that correspond to app-created events (dedup)
+          const appGoogleIds = new Set(nonGoogle.filter((e) => e.googleEventId).map((e) => e.googleEventId))
+          const dedupedGoogle = mapped.filter(
+            (e) => !e.googleEventId || !appGoogleIds.has(e.googleEventId),
+          )
+          return [...nonGoogle, ...dedupedGoogle]
         })
       } catch (err) {
         console.error('Failed to fetch Google Calendar events:', err)
@@ -265,100 +278,89 @@ export default function App() {
     [user],
   )
 
-  // AI scheduling with optimistic local preview
+  // Schedule all tasks instantly using local algorithm (no AI call needed)
   async function handleAISchedule() {
     if (todos.length === 0 || !user) return
     setIsScheduling(true)
+    const t0 = performance.now()
 
-    // Snapshot todos for scheduling (used for both local + AI)
-    const todosSnapshot = [...todos]
+    // Local scheduler is instant — no OpenAI API call needed
+    const schedule = scheduleLocally(todos, calendarEvents, viewDate)
+    console.log(`[SHOUT] Local scheduling: ${(performance.now() - t0).toFixed(0)}ms`)
 
-    // Optimistic: show local schedule immediately
-    const localSchedule = scheduleLocally(todosSnapshot, calendarEvents, viewDate)
-    const placeholderEvents: CalendarEvent[] = []
-    const placeholderTodoIds: string[] = []
+    if (schedule.length === 0) {
+      showToast('No available time slots')
+      setIsScheduling(false)
+      return
+    }
 
-    for (const item of localSchedule) {
+    // Build event data
+    const eventDataList = schedule.map((item, i) => {
+      const todo = todos.find((t) => t.id === item.todoId)!
       const [hours, minutes] = item.startTime.split(':').map(Number)
       const start = new Date(viewDate)
       start.setHours(hours, minutes, 0, 0)
       const end = new Date(start.getTime() + item.duration * 60000)
+      return { todo, start, end, color: EVENT_COLORS[i % EVENT_COLORS.length], dateStr: dateToString(start) }
+    })
 
-      placeholderEvents.push({
-        id: `placeholder-${crypto.randomUUID()}`,
-        title: item.title,
-        start,
-        end,
-        todoId: item.todoId,
-        color: EVENT_COLORS[placeholderEvents.length % EVENT_COLORS.length],
-        date: dateToString(start),
-      })
-      placeholderTodoIds.push(item.todoId)
-    }
-
-    // Show placeholders immediately
-    setCalendarEvents((prev) => [...prev, ...placeholderEvents])
-    setTodos((prev) => prev.filter((t) => !placeholderTodoIds.includes(t.id)))
+    // Optimistic UI: show events immediately, remove tasks
+    const scheduledTodoIds = eventDataList.map(({ todo }) => todo.id)
+    const optimisticEvents: CalendarEvent[] = eventDataList.map(({ todo, start, end, color, dateStr }) => ({
+      id: `placeholder-${crypto.randomUUID()}`,
+      title: todo.title,
+      start,
+      end,
+      todoId: todo.id,
+      color,
+      date: dateStr,
+    }))
+    setCalendarEvents((prev) => [...prev, ...optimisticEvents])
+    setTodos((prev) => prev.filter((t) => !scheduledTodoIds.includes(t.id)))
 
     try {
-      const schedule = await scheduleWithAI(todosSnapshot, calendarEvents)
-      // Remove placeholders
-      setCalendarEvents((prev) => prev.filter((e) => !e.id.startsWith('placeholder-')))
+      const t1 = performance.now()
 
-      // Build event data from AI schedule using index-based matching
-      const eventDataList: { todo: TodoItem; start: Date; end: Date; color: string; dateStr: string }[] = []
-
-      for (const item of schedule) {
-        const todo = todosSnapshot[item.index]
-        if (!todo) continue
-
-        const [hours, minutes] = item.startTime.split(':').map(Number)
-        const start = new Date(viewDate)
-        start.setHours(hours, minutes, 0, 0)
-        const end = new Date(start.getTime() + item.duration * 60000)
-        const color = EVENT_COLORS[eventDataList.length % EVENT_COLORS.length]
-
-        eventDataList.push({ todo, start, end, color, dateStr: dateToString(start) })
-      }
-
-      // Create all Google events in parallel (if connected)
-      const googleIds = await Promise.all(
-        eventDataList.map(({ todo, start, end }) => {
-          if (!googleToken) return Promise.resolve(null)
-          return createGoogleEvent(googleToken, {
-            title: todo.title, start, end, location: todo.location,
-          }).catch((err) => { console.error('Failed to create Google event:', err); return null })
-        }),
-      )
-
-      // Create all DB events in parallel
-      const createdEvents = await Promise.all(
-        eventDataList.map(({ todo, start, end, color, dateStr }, i) =>
-          createEvent({
-            title: todo.title,
-            start,
-            end,
-            todoId: todo.id,
-            color,
-            date: dateStr,
-            ...(googleIds[i] ? { googleEventId: googleIds[i]! } : {}),
-          }, user.id),
+      // Create Google + DB events in parallel
+      const [googleIds, createdEvents] = await Promise.all([
+        Promise.all(
+          eventDataList.map(({ todo, start, end }) => {
+            if (!googleToken) return null
+            return createGoogleEvent(googleToken, {
+              title: todo.title, start, end, location: todo.location,
+            }).catch((err) => { console.error('Google event error:', err); return null })
+          }),
         ),
-      )
+        Promise.all(
+          eventDataList.map(({ todo, start, end, color, dateStr }) =>
+            createEvent({ title: todo.title, start, end, todoId: todo.id, color, date: dateStr }, user.id),
+          ),
+        ),
+      ])
+      console.log(`[SHOUT] Create events: ${(performance.now() - t1).toFixed(0)}ms`)
 
-      // Delete all tasks in parallel
-      const scheduledTodoIds = eventDataList.map(({ todo }) => todo.id)
+      // Link Google IDs to DB events (fire and forget)
+      googleIds.forEach((gId, i) => {
+        if (gId && createdEvents[i]) {
+          updateEvent(createdEvents[i].id, { googleEventId: gId }).catch(console.error)
+        }
+      })
+
+      const t2 = performance.now()
+      // Delete tasks in parallel
       await Promise.all(scheduledTodoIds.map((id) => deleteTask(id).catch(console.error)))
+      console.log(`[SHOUT] Delete tasks: ${(performance.now() - t2).toFixed(0)}ms`)
 
+      // Replace placeholders with real DB events
       setCalendarEvents((prev) => {
         const withoutPlaceholders = prev.filter((e) => !e.id.startsWith('placeholder-'))
         return [...withoutPlaceholders, ...createdEvents]
       })
-      setTodos((prev) => prev.filter((t) => !scheduledTodoIds.includes(t.id) && !placeholderTodoIds.includes(t.id)))
+
+      console.log(`[SHOUT] Total: ${(performance.now() - t0).toFixed(0)}ms`)
       showToast(`Scheduled ${createdEvents.length} task${createdEvents.length !== 1 ? 's' : ''}`)
     } catch (err) {
-      console.error('AI scheduling error:', err)
-      // Revert: remove placeholders, reload from DB
+      console.error('Scheduling error:', err)
       setCalendarEvents((prev) => prev.filter((e) => !e.id.startsWith('placeholder-')))
       const tasks = await fetchTasks()
       setTodos(tasks)
@@ -385,26 +387,91 @@ export default function App() {
     [],
   )
 
-  // Complete event
+  // Complete event — shrink to actual time spent, suggest next task
   const handleComplete = useCallback(
     async (event: CalendarEvent) => {
       if (!user) return
       const newCompleted = !event.completed
-      setCalendarEvents((prev) =>
-        prev.map((e) => (e.id === event.id ? { ...e, completed: newCompleted } : e)),
-      )
+      const now = new Date()
+
       if (newCompleted) {
+        // Shrink event end to now (actual time spent)
+        const actualEnd = now < event.end ? now : event.end
+        setCalendarEvents((prev) =>
+          prev.map((e) => (e.id === event.id ? { ...e, completed: true, end: actualEnd } : e)),
+        )
         setCompletedToday((c) => c + 1)
-        await incrementCompletionStats(user.id, dateToString(new Date()), 'tasks_completed')
-      }
-      try {
-        await updateEvent(event.id, { completed: newCompleted })
-      } catch (err) {
-        console.error('Failed to update completion:', err)
+        await Promise.all([
+          incrementCompletionStats(user.id, dateToString(new Date()), 'tasks_completed'),
+          updateEvent(event.id, { completed: true, end: actualEnd }),
+        ])
+
+        // If backlog tasks exist, suggest scheduling the next one
+        if (todos.length > 0) {
+          const nextTask = todos[0]
+          setNextTaskSuggestion({
+            taskName: nextTask.title,
+            taskId: nextTask.id,
+            freeFrom: actualEnd,
+            duration: nextTask.duration,
+          })
+        }
+      } else {
+        // Uncomplete
+        setCalendarEvents((prev) =>
+          prev.map((e) => (e.id === event.id ? { ...e, completed: false } : e)),
+        )
+        try {
+          await updateEvent(event.id, { completed: false })
+        } catch (err) {
+          console.error('Failed to update completion:', err)
+        }
       }
     },
-    [user],
+    [user, todos],
   )
+
+  // Schedule the suggested next task into freed time
+  async function handleScheduleNextTask() {
+    if (!nextTaskSuggestion || !user) return
+    const task = todos.find((t) => t.id === nextTaskSuggestion.taskId)
+    if (!task) { setNextTaskSuggestion(null); return }
+
+    const start = new Date(nextTaskSuggestion.freeFrom)
+    // Round up to next 5 minutes
+    start.setMinutes(Math.ceil(start.getMinutes() / 5) * 5, 0, 0)
+    const end = new Date(start.getTime() + task.duration * 60000)
+    const color = EVENT_COLORS[calendarEvents.filter((e) => !e.isGoogleEvent).length % EVENT_COLORS.length]
+    const dateStr = dateToString(start)
+
+    const eventData: Omit<CalendarEvent, 'id'> = {
+      title: task.title,
+      start,
+      end,
+      todoId: task.id,
+      color,
+      date: dateStr,
+    }
+
+    // Create event + Google Calendar in parallel
+    const [created, googleId] = await Promise.all([
+      createEvent(eventData, user.id),
+      googleToken
+        ? createGoogleEvent(googleToken, { title: task.title, start, end, location: task.location }).catch(() => null)
+        : Promise.resolve(null),
+    ])
+
+    if (googleId) {
+      updateEvent(created.id, { googleEventId: googleId as string }).catch(console.error)
+    }
+
+    setCalendarEvents((prev) => [...prev, created])
+    setTodos((prev) => prev.filter((t) => t.id !== task.id))
+    await deleteTask(task.id).catch(console.error)
+
+    setNextTaskSuggestion(null)
+    showToast(`Scheduled "${task.title}"`)
+  }
 
   const handleEventDelete = useCallback(
     async (id: string) => {
@@ -700,8 +767,27 @@ export default function App() {
           </div>
         </div>
 
+        {/* Next task suggestion */}
+        {nextTaskSuggestion && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 bg-[#1a1a1a] text-white text-sm rounded-xl border border-[#333] shadow-lg animate-[fadeIn_0.2s_ease-out] flex items-center gap-3">
+            <span>Finished early! Schedule <strong>{nextTaskSuggestion.taskName}</strong>?</span>
+            <button
+              onClick={handleScheduleNextTask}
+              className="px-3 py-1.5 bg-white text-black text-xs font-semibold rounded-lg hover:bg-white/90 transition-all cursor-pointer"
+            >
+              Schedule now
+            </button>
+            <button
+              onClick={() => setNextTaskSuggestion(null)}
+              className="px-3 py-1.5 text-xs text-[#888] hover:text-white transition-all cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {/* Toast */}
-        {toast && (
+        {toast && !nextTaskSuggestion && (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 bg-[#1a1a1a] text-white text-sm rounded-xl border border-[#333] shadow-lg animate-[fadeIn_0.2s_ease-out]">
             {toast}
           </div>
