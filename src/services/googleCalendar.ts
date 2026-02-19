@@ -38,8 +38,15 @@ export async function fetchEventsForDateRange(
 
 export async function createGoogleEvent(
   accessToken: string,
-  event: { title: string; start: Date; end: Date },
+  event: { title: string; start: Date; end: Date; location?: string },
 ): Promise<string> {
+  const body: Record<string, unknown> = {
+    summary: event.title,
+    start: { dateTime: event.start.toISOString() },
+    end: { dateTime: event.end.toISOString() },
+  }
+  if (event.location) body.location = event.location
+
   const response = await fetch(
     'https://www.googleapis.com/calendar/v3/calendars/primary/events',
     {
@@ -48,11 +55,7 @@ export async function createGoogleEvent(
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        summary: event.title,
-        start: { dateTime: event.start.toISOString() },
-        end: { dateTime: event.end.toISOString() },
-      }),
+      body: JSON.stringify(body),
     },
   )
 

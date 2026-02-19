@@ -1,6 +1,7 @@
 import type { TodoItem, CalendarEvent } from '../types'
 
 interface ScheduleResult {
+  todoId: string
   title: string
   startTime: string
   duration: number
@@ -85,6 +86,7 @@ export function scheduleLocally(
         const hours = Math.floor(searchStart / 60)
         const minutes = searchStart % 60
         results.push({
+          todoId: todo.id,
           title: todo.title,
           startTime: `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`,
           duration,

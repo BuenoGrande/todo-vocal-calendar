@@ -218,6 +218,7 @@ export default function App() {
           duration: t.duration,
           priority: i,
           timePreference: t.timePreference,
+          location: t.location,
         }))
 
         // Optimistic update
@@ -269,15 +270,15 @@ export default function App() {
     if (todos.length === 0 || !user) return
     setIsScheduling(true)
 
-    // Optimistic: show local schedule immediately with shimmer
-    const localSchedule = scheduleLocally(todos, calendarEvents, viewDate)
+    // Snapshot todos for scheduling (used for both local + AI)
+    const todosSnapshot = [...todos]
+
+    // Optimistic: show local schedule immediately
+    const localSchedule = scheduleLocally(todosSnapshot, calendarEvents, viewDate)
     const placeholderEvents: CalendarEvent[] = []
     const placeholderTodoIds: string[] = []
 
     for (const item of localSchedule) {
-      const todo = todos.find((t) => t.title === item.title)
-      if (!todo) continue
-
       const [hours, minutes] = item.startTime.split(':').map(Number)
       const start = new Date(viewDate)
       start.setHours(hours, minutes, 0, 0)
@@ -285,14 +286,14 @@ export default function App() {
 
       placeholderEvents.push({
         id: `placeholder-${crypto.randomUUID()}`,
-        title: todo.title,
+        title: item.title,
         start,
         end,
-        todoId: todo.id,
+        todoId: item.todoId,
         color: EVENT_COLORS[placeholderEvents.length % EVENT_COLORS.length],
         date: dateToString(start),
       })
-      placeholderTodoIds.push(todo.id)
+      placeholderTodoIds.push(item.todoId)
     }
 
     // Show placeholders immediately
@@ -300,64 +301,65 @@ export default function App() {
     setTodos((prev) => prev.filter((t) => !placeholderTodoIds.includes(t.id)))
 
     try {
-      const schedule = await scheduleWithAI(todos, calendarEvents)
+      const schedule = await scheduleWithAI(todosSnapshot, calendarEvents)
       // Remove placeholders
       setCalendarEvents((prev) => prev.filter((e) => !e.id.startsWith('placeholder-')))
 
-      const newEvents: CalendarEvent[] = []
-      const scheduledTodoIds: string[] = []
+      // Build event data from AI schedule using index-based matching
+      const eventDataList: { todo: TodoItem; start: Date; end: Date; color: string; dateStr: string }[] = []
 
       for (const item of schedule) {
-        const todo = todos.find((t) => t.title === item.title)
+        const todo = todosSnapshot[item.index]
         if (!todo) continue
 
         const [hours, minutes] = item.startTime.split(':').map(Number)
         const start = new Date(viewDate)
         start.setHours(hours, minutes, 0, 0)
         const end = new Date(start.getTime() + item.duration * 60000)
-        const color = EVENT_COLORS[newEvents.length % EVENT_COLORS.length]
-        const dateStr = dateToString(start)
+        const color = EVENT_COLORS[eventDataList.length % EVENT_COLORS.length]
 
-        const eventData: Omit<CalendarEvent, 'id'> = {
-          title: todo.title,
-          start,
-          end,
-          todoId: todo.id,
-          color,
-          date: dateStr,
-        }
-
-        // Create in Google Calendar if connected
-        if (googleToken) {
-          try {
-            const googleId = await createGoogleEvent(googleToken, { title: todo.title, start, end })
-            eventData.googleEventId = googleId
-          } catch (err) {
-            console.error('Failed to create Google event:', err)
-          }
-        }
-
-        // Persist to Supabase
-        const created = await createEvent(eventData, user.id)
-        newEvents.push(created)
-        scheduledTodoIds.push(todo.id)
-
-        // Delete the task from DB
-        await deleteTask(todo.id)
+        eventDataList.push({ todo, start, end, color, dateStr: dateToString(start) })
       }
+
+      // Create all Google events in parallel (if connected)
+      const googleIds = await Promise.all(
+        eventDataList.map(({ todo, start, end }) => {
+          if (!googleToken) return Promise.resolve(null)
+          return createGoogleEvent(googleToken, {
+            title: todo.title, start, end, location: todo.location,
+          }).catch((err) => { console.error('Failed to create Google event:', err); return null })
+        }),
+      )
+
+      // Create all DB events in parallel
+      const createdEvents = await Promise.all(
+        eventDataList.map(({ todo, start, end, color, dateStr }, i) =>
+          createEvent({
+            title: todo.title,
+            start,
+            end,
+            todoId: todo.id,
+            color,
+            date: dateStr,
+            ...(googleIds[i] ? { googleEventId: googleIds[i]! } : {}),
+          }, user.id),
+        ),
+      )
+
+      // Delete all tasks in parallel
+      const scheduledTodoIds = eventDataList.map(({ todo }) => todo.id)
+      await Promise.all(scheduledTodoIds.map((id) => deleteTask(id).catch(console.error)))
 
       setCalendarEvents((prev) => {
         const withoutPlaceholders = prev.filter((e) => !e.id.startsWith('placeholder-'))
-        return [...withoutPlaceholders, ...newEvents]
+        return [...withoutPlaceholders, ...createdEvents]
       })
-      // Ensure todos that were scheduled are removed
       setTodos((prev) => prev.filter((t) => !scheduledTodoIds.includes(t.id) && !placeholderTodoIds.includes(t.id)))
-      showToast(`Scheduled ${newEvents.length} task${newEvents.length !== 1 ? 's' : ''}`)
+      showToast(`Scheduled ${createdEvents.length} task${createdEvents.length !== 1 ? 's' : ''}`)
     } catch (err) {
       console.error('AI scheduling error:', err)
-      // Revert: remove placeholders, add todos back
+      // Revert: remove placeholders, reload from DB
       setCalendarEvents((prev) => prev.filter((e) => !e.id.startsWith('placeholder-')))
-      // Reload from DB
       const tasks = await fetchTasks()
       setTodos(tasks)
       showToast(`Scheduling failed: ${err instanceof Error ? err.message : 'Unknown error'}`)

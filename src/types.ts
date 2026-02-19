@@ -3,7 +3,8 @@ export interface TodoItem {
   title: string
   duration: number // minutes
   priority: number
-  timePreference?: string // e.g. "morning", "after lunch", "before 3pm" — hidden from UI, used by scheduler
+  timePreference?: string // e.g. "morning", "after lunch", "before 3pm"
+  location?: string
 }
 
 export interface CalendarEvent {
@@ -17,6 +18,7 @@ export interface CalendarEvent {
   completed?: boolean
   color: string
   date?: string // YYYY-MM-DD
+  location?: string
 }
 
 export type ViewMode = '1-day' | '3-day'
