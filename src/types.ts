@@ -16,4 +16,7 @@ export interface CalendarEvent {
   isGoogleEvent?: boolean
   completed?: boolean
   color: string
+  date?: string // YYYY-MM-DD
 }
+
+export type ViewMode = '1-day' | '3-day'

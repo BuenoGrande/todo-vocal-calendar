@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import {
   DndContext,
   type DragEndEvent,
@@ -8,31 +8,57 @@ import {
   DragOverlay,
 } from '@dnd-kit/core'
 import { arrayMove } from '@dnd-kit/sortable'
-import type { TodoItem, CalendarEvent } from './types'
+import type { TodoItem, CalendarEvent, ViewMode } from './types'
 import { parseTasks, scheduleWithAI } from './services/llm'
+import { scheduleLocally } from './services/localScheduler'
 import {
-  initGoogleAuth,
-  fetchTodayEvents,
+  fetchEventsForDateRange,
   createGoogleEvent,
   updateGoogleEvent,
   deleteGoogleEvent,
 } from './services/googleCalendar'
+import {
+  fetchTasks,
+  createTask,
+  updateTask,
+  deleteTask,
+  reorderTasks,
+  fetchEvents,
+  createEvent,
+  updateEvent,
+  deleteEvent,
+  getCompletionStats,
+  incrementCompletionStats,
+} from './services/database'
+import { useAuth } from './contexts/AuthContext'
 import GoogleCalendarButton from './components/GoogleCalendarButton'
 import VoiceInput from './components/VoiceInput'
 import TodoList from './components/TodoList'
 import CalendarView from './components/CalendarView'
+import DayNavigation from './components/DayNavigation'
+import CompletionCounter from './components/CompletionCounter'
+import LoginScreen from './components/LoginScreen'
+import AnimatedBackground from './components/AnimatedBackground'
 
-const EVENT_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6']
+const EVENT_COLORS = ['#FF3300', '#FF6B00', '#FF9500', '#FFD700', '#00C853', '#2979FF']
 const GOOGLE_EVENT_COLOR = '#34a853'
-const GOOGLE_CLIENT_ID = '1065090327076-lfesgc6ophb9pach2qbltrsvkb1kv4ba.apps.googleusercontent.com'
+
+function dateToString(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
 
 export default function App() {
+  const { user, googleToken, loading, signInWithGoogle } = useAuth()
   const [todos, setTodos] = useState<TodoItem[]>([])
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([])
-  const [googleToken, setGoogleToken] = useState<string | null>(null)
   const [isScheduling, setIsScheduling] = useState(false)
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [viewDate, setViewDate] = useState(new Date())
+  const [viewMode, setViewMode] = useState<ViewMode>('1-day')
+  const [completedToday, setCompletedToday] = useState(0)
+  const [dataLoaded, setDataLoaded] = useState(false)
+  const googleFetchedRef = useRef(false)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -43,69 +69,147 @@ export default function App() {
     setTimeout(() => setToast(null), 3000)
   }
 
-  // Google Calendar connect
-  async function handleConnectGoogle() {
-    try {
-      const token = await initGoogleAuth(GOOGLE_CLIENT_ID)
-      setGoogleToken(token)
-      showToast('Connected to Google Calendar')
-      // Fetch today's events
-      const events = await fetchTodayEvents(token)
-      const mapped: CalendarEvent[] = events.map(
-        (e: { id: string; title: string; start: Date; end: Date }) => ({
-          id: `google-${e.id}`,
-          title: e.title,
-          start: e.start,
-          end: e.end,
-          googleEventId: e.id,
-          isGoogleEvent: true,
-          color: GOOGLE_EVENT_COLOR,
-        }),
-      )
-      setCalendarEvents((prev) => {
-        const nonGoogle = prev.filter((e) => !e.isGoogleEvent)
-        return [...nonGoogle, ...mapped]
-      })
-    } catch (err) {
-      console.error('Google auth error:', err)
-      showToast(`Google Calendar error: ${err instanceof Error ? err.message : 'Unknown error'}`)
-    }
-  }
+  // Load data from Supabase on auth
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
 
-  function handleDisconnectGoogle() {
-    setGoogleToken(null)
-    setCalendarEvents((prev) => prev.filter((e) => !e.isGoogleEvent))
-    showToast('Disconnected from Google Calendar')
-  }
+    async function loadData() {
+      try {
+        const [tasks, stats] = await Promise.all([
+          fetchTasks(),
+          getCompletionStats(dateToString(new Date())),
+        ])
+        if (cancelled) return
+        setTodos(tasks)
+        setCompletedToday(stats.tasksCompleted)
+        setDataLoaded(true)
+      } catch (err) {
+        console.error('Failed to load data:', err)
+      }
+    }
+
+    loadData()
+    return () => { cancelled = true }
+  }, [user])
+
+  // Load events for visible date range
+  useEffect(() => {
+    if (!user || !dataLoaded) return
+    let cancelled = false
+
+    async function loadEvents() {
+      const start = new Date(viewDate)
+      start.setHours(0, 0, 0, 0)
+      const end = new Date(viewDate)
+      if (viewMode === '3-day') end.setDate(end.getDate() + 2)
+      end.setHours(23, 59, 59, 999)
+
+      try {
+        const events = await fetchEvents(dateToString(start), dateToString(end))
+        if (cancelled) return
+        setCalendarEvents((prev) => {
+          // Keep google-origin events that may have been fetched, merge with DB events
+          const googleEvents = prev.filter((e) => e.isGoogleEvent)
+          const dbIds = new Set(events.map((e) => e.id))
+          const nonConflictingGoogle = googleEvents.filter((e) => !dbIds.has(e.id))
+          return [...events, ...nonConflictingGoogle]
+        })
+      } catch (err) {
+        console.error('Failed to load events:', err)
+      }
+    }
+
+    loadEvents()
+    return () => { cancelled = true }
+  }, [user, viewDate, viewMode, dataLoaded])
+
+  // Fetch Google Calendar events when token is available
+  useEffect(() => {
+    if (!googleToken || !user || googleFetchedRef.current) return
+    googleFetchedRef.current = true
+
+    async function fetchGoogleEvents() {
+      try {
+        const start = new Date(viewDate)
+        start.setHours(0, 0, 0, 0)
+        const end = new Date(viewDate)
+        if (viewMode === '3-day') end.setDate(end.getDate() + 2)
+        end.setHours(23, 59, 59, 999)
+
+        const events = await fetchEventsForDateRange(googleToken!, start, end)
+        const mapped: CalendarEvent[] = events.map(
+          (e: { id: string; title: string; start: Date; end: Date }) => ({
+            id: `google-${e.id}`,
+            title: e.title,
+            start: e.start,
+            end: e.end,
+            googleEventId: e.id,
+            isGoogleEvent: true,
+            color: GOOGLE_EVENT_COLOR,
+            date: dateToString(e.start),
+          }),
+        )
+        setCalendarEvents((prev) => {
+          const nonGoogle = prev.filter((e) => !e.isGoogleEvent)
+          return [...nonGoogle, ...mapped]
+        })
+      } catch (err) {
+        console.error('Failed to fetch Google Calendar events:', err)
+      }
+    }
+
+    fetchGoogleEvents()
+  }, [googleToken, user, viewDate, viewMode])
 
   // Add todo
-  function handleAddTodo(title: string, duration: number) {
-    const newTodo: TodoItem = {
-      id: crypto.randomUUID(),
-      title,
-      duration,
-      priority: todos.length,
-    }
+  async function handleAddTodo(title: string, duration: number) {
+    if (!user) return
+    const priority = todos.length
+    const tempId = crypto.randomUUID()
+    const newTodo: TodoItem = { id: tempId, title, duration, priority }
+
+    // Optimistic update
     setTodos((prev) => [...prev, newTodo])
+
+    try {
+      const created = await createTask({ title, duration, priority }, user.id)
+      setTodos((prev) => prev.map((t) => (t.id === tempId ? created : t)))
+      await incrementCompletionStats(user.id, dateToString(new Date()), 'tasks_created')
+    } catch (err) {
+      console.error('Failed to create task:', err)
+      setTodos((prev) => prev.filter((t) => t.id !== tempId))
+      showToast('Failed to save task')
+    }
   }
 
   // Update todo
-  function handleUpdateTodo(id: string, updates: Partial<TodoItem>) {
+  async function handleUpdateTodo(id: string, updates: Partial<TodoItem>) {
     setTodos((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)))
+    try {
+      await updateTask(id, updates)
+    } catch (err) {
+      console.error('Failed to update task:', err)
+    }
   }
 
   // Delete todo
-  function handleDeleteTodo(id: string) {
+  async function handleDeleteTodo(id: string) {
     setTodos((prev) => prev.filter((t) => t.id !== id))
+    try {
+      await deleteTask(id)
+    } catch (err) {
+      console.error('Failed to delete task:', err)
+    }
   }
 
   // Voice transcription handler
   const handleTranscription = useCallback(
     async (text: string) => {
+      if (!user) return
       try {
         showToast('Parsing tasks...')
         const tasks = await parseTasks(text)
-        // Sort by priority from LLM (1 = highest) before inserting
         const sorted = [...tasks].sort((a, b) => a.priority - b.priority)
         const newTodos: TodoItem[] = sorted.map((t, i) => ({
           id: crypto.randomUUID(),
@@ -114,26 +218,91 @@ export default function App() {
           priority: i,
           timePreference: t.timePreference,
         }))
-        // Prepend new tasks (higher priority) before existing ones, re-number existing
+
+        // Optimistic update
         setTodos((prev) => {
           const renumbered = prev.map((t, i) => ({ ...t, priority: newTodos.length + i }))
           return [...newTodos, ...renumbered]
         })
+
+        // Persist to Supabase
+        const createdTodos: TodoItem[] = []
+        for (const todo of newTodos) {
+          try {
+            const created = await createTask(
+              { title: todo.title, duration: todo.duration, priority: todo.priority, timePreference: todo.timePreference },
+              user.id,
+            )
+            createdTodos.push(created)
+            await incrementCompletionStats(user.id, dateToString(new Date()), 'tasks_created')
+          } catch (err) {
+            console.error('Failed to create task:', err)
+          }
+        }
+
+        // Replace temp IDs with real ones
+        setTodos((prev) => {
+          let updated = [...prev]
+          for (let i = 0; i < newTodos.length; i++) {
+            if (createdTodos[i]) {
+              updated = updated.map((t) => (t.id === newTodos[i].id ? createdTodos[i] : t))
+            }
+          }
+          // Reorder existing tasks in DB
+          const existing = updated.filter((t) => !newTodos.some((n) => n.id === t.id))
+          reorderTasks(existing.map((t, i) => ({ id: t.id, priority: newTodos.length + i }))).catch(console.error)
+          return updated
+        })
+
         showToast(`Added ${newTodos.length} task${newTodos.length !== 1 ? 's' : ''}`)
       } catch (err) {
         console.error('Task parsing error:', err)
         showToast(`Parsing failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
       }
     },
-    [],
+    [user],
   )
 
-  // AI scheduling
+  // AI scheduling with optimistic local preview
   async function handleAISchedule() {
-    if (todos.length === 0) return
+    if (todos.length === 0 || !user) return
     setIsScheduling(true)
+
+    // Optimistic: show local schedule immediately with shimmer
+    const localSchedule = scheduleLocally(todos, calendarEvents, viewDate)
+    const placeholderEvents: CalendarEvent[] = []
+    const placeholderTodoIds: string[] = []
+
+    for (const item of localSchedule) {
+      const todo = todos.find((t) => t.title === item.title)
+      if (!todo) continue
+
+      const [hours, minutes] = item.startTime.split(':').map(Number)
+      const start = new Date(viewDate)
+      start.setHours(hours, minutes, 0, 0)
+      const end = new Date(start.getTime() + item.duration * 60000)
+
+      placeholderEvents.push({
+        id: `placeholder-${crypto.randomUUID()}`,
+        title: todo.title,
+        start,
+        end,
+        todoId: todo.id,
+        color: EVENT_COLORS[placeholderEvents.length % EVENT_COLORS.length],
+        date: dateToString(start),
+      })
+      placeholderTodoIds.push(todo.id)
+    }
+
+    // Show placeholders immediately
+    setCalendarEvents((prev) => [...prev, ...placeholderEvents])
+    setTodos((prev) => prev.filter((t) => !placeholderTodoIds.includes(t.id)))
+
     try {
       const schedule = await scheduleWithAI(todos, calendarEvents)
+      // Remove placeholders
+      setCalendarEvents((prev) => prev.filter((e) => !e.id.startsWith('placeholder-')))
+
       const newEvents: CalendarEvent[] = []
       const scheduledTodoIds: string[] = []
 
@@ -142,43 +311,54 @@ export default function App() {
         if (!todo) continue
 
         const [hours, minutes] = item.startTime.split(':').map(Number)
-        const start = new Date()
+        const start = new Date(viewDate)
         start.setHours(hours, minutes, 0, 0)
         const end = new Date(start.getTime() + item.duration * 60000)
         const color = EVENT_COLORS[newEvents.length % EVENT_COLORS.length]
+        const dateStr = dateToString(start)
 
-        const newEvent: CalendarEvent = {
-          id: crypto.randomUUID(),
+        const eventData: Omit<CalendarEvent, 'id'> = {
           title: todo.title,
           start,
           end,
           todoId: todo.id,
           color,
+          date: dateStr,
         }
 
         // Create in Google Calendar if connected
         if (googleToken) {
           try {
-            const googleId = await createGoogleEvent(googleToken, {
-              title: todo.title,
-              start,
-              end,
-            })
-            newEvent.googleEventId = googleId
+            const googleId = await createGoogleEvent(googleToken, { title: todo.title, start, end })
+            eventData.googleEventId = googleId
           } catch (err) {
             console.error('Failed to create Google event:', err)
           }
         }
 
-        newEvents.push(newEvent)
+        // Persist to Supabase
+        const created = await createEvent(eventData, user.id)
+        newEvents.push(created)
         scheduledTodoIds.push(todo.id)
+
+        // Delete the task from DB
+        await deleteTask(todo.id)
       }
 
-      setCalendarEvents((prev) => [...prev, ...newEvents])
-      setTodos((prev) => prev.filter((t) => !scheduledTodoIds.includes(t.id)))
+      setCalendarEvents((prev) => {
+        const withoutPlaceholders = prev.filter((e) => !e.id.startsWith('placeholder-'))
+        return [...withoutPlaceholders, ...newEvents]
+      })
+      // Ensure todos that were scheduled are removed
+      setTodos((prev) => prev.filter((t) => !scheduledTodoIds.includes(t.id) && !placeholderTodoIds.includes(t.id)))
       showToast(`Scheduled ${newEvents.length} task${newEvents.length !== 1 ? 's' : ''}`)
     } catch (err) {
       console.error('AI scheduling error:', err)
+      // Revert: remove placeholders, add todos back
+      setCalendarEvents((prev) => prev.filter((e) => !e.id.startsWith('placeholder-')))
+      // Reload from DB
+      const tasks = await fetchTasks()
+      setTodos(tasks)
       showToast(`Scheduling failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
     } finally {
       setIsScheduling(false)
@@ -191,14 +371,37 @@ export default function App() {
       setCalendarEvents((prev) =>
         prev.map((e) => (e.id === id ? { ...e, ...updates } : e)),
       )
+      // Skip DB update for placeholder events
+      if (id.startsWith('placeholder-')) return
+      try {
+        await updateEvent(id, updates)
+      } catch (err) {
+        console.error('Failed to update event:', err)
+      }
     },
     [],
   )
 
-  // Sync to Google on event update (debounced via mouseup in CalendarView)
-  useEffect(() => {
-    // We handle Google sync on specific actions, not every state change
-  }, [])
+  // Complete event
+  const handleComplete = useCallback(
+    async (event: CalendarEvent) => {
+      if (!user) return
+      const newCompleted = !event.completed
+      setCalendarEvents((prev) =>
+        prev.map((e) => (e.id === event.id ? { ...e, completed: newCompleted } : e)),
+      )
+      if (newCompleted) {
+        setCompletedToday((c) => c + 1)
+        await incrementCompletionStats(user.id, dateToString(new Date()), 'tasks_completed')
+      }
+      try {
+        await updateEvent(event.id, { completed: newCompleted })
+      } catch (err) {
+        console.error('Failed to update completion:', err)
+      }
+    },
+    [user],
+  )
 
   const handleEventDelete = useCallback(
     async (id: string) => {
@@ -211,6 +414,13 @@ export default function App() {
         }
       }
       setCalendarEvents((prev) => prev.filter((e) => e.id !== id))
+      if (!id.startsWith('placeholder-')) {
+        try {
+          await deleteEvent(id)
+        } catch (err) {
+          console.error('Failed to delete event from DB:', err)
+        }
+      }
     },
     [calendarEvents, googleToken],
   )
@@ -218,6 +428,7 @@ export default function App() {
   // Reschedule: move calendar event back to todo list
   const handleReschedule = useCallback(
     async (event: CalendarEvent) => {
+      if (!user) return
       // Delete from Google Calendar if synced
       if (event.googleEventId && googleToken && !event.isGoogleEvent) {
         try {
@@ -228,18 +439,16 @@ export default function App() {
       }
       // Remove from calendar
       setCalendarEvents((prev) => prev.filter((e) => e.id !== event.id))
+      await deleteEvent(event.id).catch(console.error)
+
       // Create new todo
       const duration = Math.round((event.end.getTime() - event.start.getTime()) / 60000)
-      const newTodo: TodoItem = {
-        id: crypto.randomUUID(),
-        title: event.title,
-        duration,
-        priority: todos.length,
-      }
-      setTodos((prev) => [...prev, newTodo])
+      const priority = todos.length
+      const created = await createTask({ title: event.title, duration, priority }, user.id)
+      setTodos((prev) => [...prev, created])
       showToast(`"${event.title}" moved back to tasks`)
     },
-    [googleToken, todos.length],
+    [googleToken, todos.length, user],
   )
 
   // DnD handlers
@@ -247,33 +456,46 @@ export default function App() {
     setActiveDragId(String(event.active.id))
   }
 
-  function handleDragEnd(event: DragEndEvent) {
+  async function handleDragEnd(event: DragEndEvent) {
     setActiveDragId(null)
     const { active, over } = event
-    if (!over) return
+    if (!over || !user) return
 
     const activeId = String(active.id)
     const overId = String(over.id)
 
     if (overId.startsWith('slot-')) {
-      // Dropped on calendar slot
+      // Dropped on calendar slot — parse date and time from slot id
       const todo = todos.find((t) => t.id === activeId)
       if (!todo) return
 
-      const timeStr = overId.replace('slot-', '')
+      // slot id format: slot-YYYY-MM-DD-HH:MM or slot-HH:MM (single day)
+      let dateStr: string
+      let timeStr: string
+
+      const parts = overId.replace('slot-', '')
+      const dateMatch = parts.match(/^(\d{4}-\d{2}-\d{2})-(\d{2}:\d{2})$/)
+      if (dateMatch) {
+        dateStr = dateMatch[1]
+        timeStr = dateMatch[2]
+      } else {
+        dateStr = dateToString(viewDate)
+        timeStr = parts
+      }
+
       const [hours, minutes] = timeStr.split(':').map(Number)
-      const start = new Date()
-      start.setHours(hours, minutes, 0, 0)
+      const [year, month, day] = dateStr.split('-').map(Number)
+      const start = new Date(year, month - 1, day, hours, minutes, 0, 0)
       const end = new Date(start.getTime() + todo.duration * 60000)
       const color = EVENT_COLORS[calendarEvents.filter((e) => !e.isGoogleEvent).length % EVENT_COLORS.length]
 
-      const newEvent: CalendarEvent = {
-        id: crypto.randomUUID(),
+      const eventData: Omit<CalendarEvent, 'id'> = {
         title: todo.title,
         start,
         end,
         todoId: todo.id,
         color,
+        date: dateStr,
       }
 
       // Create in Google Calendar if connected
@@ -281,14 +503,25 @@ export default function App() {
         createGoogleEvent(googleToken, { title: todo.title, start, end })
           .then((googleId) => {
             setCalendarEvents((prev) =>
-              prev.map((e) => (e.id === newEvent.id ? { ...e, googleEventId: googleId } : e)),
+              prev.map((e) => (e.todoId === todo.id ? { ...e, googleEventId: googleId } : e)),
             )
+            updateEvent(todo.id, { googleEventId: googleId }).catch(console.error)
           })
           .catch((err) => console.error('Failed to create Google event:', err))
       }
 
-      setCalendarEvents((prev) => [...prev, newEvent])
+      // Persist to Supabase
+      try {
+        const created = await createEvent(eventData, user.id)
+        setCalendarEvents((prev) => [...prev, created])
+      } catch (err) {
+        console.error('Failed to create event:', err)
+        // Fallback: add optimistic
+        setCalendarEvents((prev) => [...prev, { id: crypto.randomUUID(), ...eventData }])
+      }
+
       setTodos((prev) => prev.filter((t) => t.id !== activeId))
+      await deleteTask(activeId).catch(console.error)
     } else {
       // Reorder within todo list
       if (activeId !== overId) {
@@ -296,7 +529,10 @@ export default function App() {
           const oldIndex = prev.findIndex((t) => t.id === activeId)
           const newIndex = prev.findIndex((t) => t.id === overId)
           if (oldIndex === -1 || newIndex === -1) return prev
-          return arrayMove(prev, oldIndex, newIndex)
+          const reordered = arrayMove(prev, oldIndex, newIndex)
+          // Persist priority order
+          reorderTasks(reordered.map((t, i) => ({ id: t.id, priority: i }))).catch(console.error)
+          return reordered
         })
       }
     }
@@ -324,7 +560,6 @@ export default function App() {
   // Listen for mouseup to sync calendar events after drag/resize
   useEffect(() => {
     function handleGlobalMouseUp() {
-      // Sync all non-google events that have googleEventIds
       calendarEvents
         .filter((e) => !e.isGoogleEvent && e.googleEventId)
         .forEach((e) => syncEventToGoogle(e.id))
@@ -335,43 +570,50 @@ export default function App() {
 
   const activeTodo = activeDragId ? todos.find((t) => t.id === activeDragId) : null
 
+  // Loading state
+  if (loading) {
+    return (
+      <div className="h-screen w-screen bg-black flex items-center justify-center">
+        <div className="text-[#FF3300] text-2xl font-black animate-pulse">SHOUT</div>
+      </div>
+    )
+  }
+
+  // Not authenticated
+  if (!user) {
+    return <LoginScreen onSignIn={signInWithGoogle} />
+  }
+
   return (
     <DndContext
       sensors={sensors}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="h-screen flex flex-col bg-slate-50 font-sans">
-        {/* Header — minimal */}
-        <header className="flex items-center justify-between px-5 py-3 bg-white border-b border-gray-100 shadow-sm">
+      <div className="h-screen flex flex-col bg-black font-sans relative">
+        <AnimatedBackground />
+
+        {/* Header */}
+        <header className="relative z-10 flex items-center justify-between px-5 py-3 border-b border-[#1a1a1a]">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center">
-              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                />
-              </svg>
-            </div>
-            <h1 className="text-base font-semibold text-gray-900">Voice Todo Calendar</h1>
+            <h1 className="text-lg font-black text-white tracking-tight">
+              SH<span className="text-[#FF3300]">OU</span>T
+            </h1>
           </div>
 
-          <GoogleCalendarButton
-            connected={!!googleToken}
-            onConnect={handleConnectGoogle}
-            onDisconnect={handleDisconnectGoogle}
-          />
+          <div className="flex items-center gap-4">
+            <CompletionCounter count={completedToday} />
+            <GoogleCalendarButton />
+          </div>
         </header>
 
         {/* Main content */}
-        <div className="flex flex-1 overflow-hidden">
+        <div className="relative z-10 flex flex-1 overflow-hidden">
           {/* Todo panel */}
-          <div className="w-[380px] flex-shrink-0 p-4 border-r border-gray-100 bg-slate-50/50">
+          <div className="w-[380px] flex-shrink-0 p-4 border-r border-[#1a1a1a]">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-base font-semibold text-gray-900">Tasks</h2>
-              <span className="text-xs text-gray-400 font-medium">
+              <h2 className="text-base font-semibold text-white">Tasks</h2>
+              <span className="text-xs text-[#555] font-medium">
                 {todos.length} {todos.length === 1 ? 'task' : 'tasks'}
               </span>
             </div>
@@ -383,7 +625,7 @@ export default function App() {
                 onClick={handleAISchedule}
                 disabled={todos.length === 0 || isScheduling}
                 title="AI auto-schedule all tasks"
-                className="flex-1 h-9 px-3 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-500 text-white text-sm font-medium hover:from-violet-600 hover:to-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                className="flex-1 h-9 px-3 rounded-lg bg-[#FF3300] text-white text-sm font-medium hover:bg-[#FF4400] hover:scale-[1.02] disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 {isScheduling ? (
                   <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -408,26 +650,28 @@ export default function App() {
           </div>
 
           {/* Calendar panel */}
-          <div className="flex-1 p-4 overflow-hidden">
+          <div className="flex-1 p-4 overflow-hidden flex flex-col gap-3">
+            <DayNavigation
+              viewDate={viewDate}
+              viewMode={viewMode}
+              onDateChange={setViewDate}
+              onViewModeChange={setViewMode}
+            />
             <CalendarView
               events={calendarEvents}
+              viewDate={viewDate}
+              viewMode={viewMode}
               onEventUpdate={handleEventUpdate}
               onEventDelete={handleEventDelete}
               onReschedule={handleReschedule}
+              onComplete={handleComplete}
             />
           </div>
         </div>
 
-        {/* Privacy policy link */}
-        <div className="fixed bottom-2 right-4 z-40">
-          <a href="/privacy.html" target="_blank" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
-            Privacy Policy
-          </a>
-        </div>
-
         {/* Toast */}
         {toast && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 bg-gray-900 text-white text-sm rounded-xl shadow-lg animate-[fadeIn_0.2s_ease-out]">
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 bg-[#1a1a1a] text-white text-sm rounded-xl border border-[#333] shadow-lg animate-[fadeIn_0.2s_ease-out]">
             {toast}
           </div>
         )}
@@ -435,9 +679,9 @@ export default function App() {
         {/* Drag overlay */}
         <DragOverlay>
           {activeTodo ? (
-            <div className="px-4 py-2.5 bg-white rounded-xl border border-indigo-200 shadow-xl text-sm text-gray-800 font-medium max-w-[300px] truncate">
+            <div className="px-4 py-2.5 bg-[#111] rounded-xl border border-[#FF3300]/30 shadow-xl shadow-[#FF3300]/10 text-sm text-white font-medium max-w-[300px] truncate">
               {activeTodo.title}
-              <span className="ml-2 text-xs text-indigo-500">{activeTodo.duration}m</span>
+              <span className="ml-2 text-xs text-[#FF3300]">{activeTodo.duration}m</span>
             </div>
           ) : null}
         </DragOverlay>

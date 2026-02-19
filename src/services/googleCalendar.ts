@@ -1,52 +1,11 @@
-declare global {
-  interface Window {
-    google?: {
-      accounts: {
-        oauth2: {
-          initTokenClient: (config: {
-            client_id: string
-            scope: string
-            callback: (response: { access_token?: string; error?: string }) => void
-          }) => { requestAccessToken: () => void }
-        }
-      }
-    }
-  }
-}
-
-export function initGoogleAuth(clientId: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    if (!window.google?.accounts?.oauth2) {
-      reject(new Error('Google Identity Services not loaded. Please refresh the page.'))
-      return
-    }
-
-    const client = window.google.accounts.oauth2.initTokenClient({
-      client_id: clientId,
-      scope: 'https://www.googleapis.com/auth/calendar',
-      callback: (response) => {
-        if (response.error) {
-          reject(new Error(response.error))
-        } else if (response.access_token) {
-          resolve(response.access_token)
-        } else {
-          reject(new Error('No access token received'))
-        }
-      },
-    })
-
-    client.requestAccessToken()
-  })
-}
-
-export async function fetchTodayEvents(accessToken: string) {
-  const now = new Date()
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
-  const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)
-
+export async function fetchEventsForDateRange(
+  accessToken: string,
+  startDate: Date,
+  endDate: Date,
+) {
   const params = new URLSearchParams({
-    timeMin: startOfDay.toISOString(),
-    timeMax: endOfDay.toISOString(),
+    timeMin: startDate.toISOString(),
+    timeMax: endDate.toISOString(),
     singleEvents: 'true',
     orderBy: 'startTime',
   })

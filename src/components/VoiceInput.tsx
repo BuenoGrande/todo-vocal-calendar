@@ -34,7 +34,6 @@ export default function VoiceInput({ onTranscription }: VoiceInputProps) {
           if (text.trim()) onTranscription(text)
         } catch (err) {
           console.error('Transcription error:', err)
-          alert(`Transcription failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
         } finally {
           setIsProcessing(false)
         }
@@ -44,7 +43,6 @@ export default function VoiceInput({ onTranscription }: VoiceInputProps) {
       setIsRecording(true)
     } catch (err) {
       console.error('Microphone access error:', err)
-      alert('Could not access microphone. Please check permissions.')
     }
   }, [onTranscription])
 
@@ -67,10 +65,10 @@ export default function VoiceInput({ onTranscription }: VoiceInputProps) {
       title={isRecording ? 'Stop recording' : 'Start recording'}
       className={`relative w-11 h-11 rounded-full flex items-center justify-center transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
         isRecording
-          ? 'bg-red-500 text-white recording-pulse'
+          ? 'bg-[#FF3300] text-white recording-pulse'
           : isProcessing
-            ? 'bg-amber-500 text-white animate-pulse'
-            : 'bg-indigo-500 text-white hover:bg-indigo-600'
+            ? 'bg-[#FF3300]/60 text-white animate-pulse'
+            : 'bg-[#FF3300] text-white hover:bg-[#FF4400] hover:scale-105'
       }`}
     >
       {isProcessing ? (
