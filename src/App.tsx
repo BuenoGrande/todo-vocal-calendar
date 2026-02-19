@@ -451,6 +451,22 @@ export default function App() {
     [googleToken, todos.length, user],
   )
 
+  // Clear all events (non-Google)
+  async function handleClearAllEvents() {
+    const nonGoogleEvents = calendarEvents.filter((e) => !e.isGoogleEvent)
+    if (nonGoogleEvents.length === 0) return
+    setCalendarEvents((prev) => prev.filter((e) => e.isGoogleEvent))
+    for (const event of nonGoogleEvents) {
+      if (event.googleEventId && googleToken) {
+        deleteGoogleEvent(googleToken, event.googleEventId).catch(console.error)
+      }
+      if (!event.id.startsWith('placeholder-')) {
+        deleteEvent(event.id).catch(console.error)
+      }
+    }
+    showToast(`Cleared ${nonGoogleEvents.length} events`)
+  }
+
   // DnD handlers
   function handleDragStart(event: { active: { id: string | number } }) {
     setActiveDragId(String(event.active.id))
@@ -651,12 +667,24 @@ export default function App() {
 
           {/* Calendar panel */}
           <div className="flex-1 p-4 overflow-hidden flex flex-col gap-3">
-            <DayNavigation
-              viewDate={viewDate}
-              viewMode={viewMode}
-              onDateChange={setViewDate}
-              onViewModeChange={setViewMode}
-            />
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <DayNavigation
+                  viewDate={viewDate}
+                  viewMode={viewMode}
+                  onDateChange={setViewDate}
+                  onViewModeChange={setViewMode}
+                />
+              </div>
+              {calendarEvents.some((e) => !e.isGoogleEvent) && (
+                <button
+                  onClick={handleClearAllEvents}
+                  className="px-3 py-1.5 text-xs font-medium text-red-400 border border-red-400/20 rounded-lg hover:bg-red-400/10 transition-all cursor-pointer"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
             <CalendarView
               events={calendarEvents}
               viewDate={viewDate}
