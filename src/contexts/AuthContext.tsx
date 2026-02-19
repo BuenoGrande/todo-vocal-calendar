@@ -13,10 +13,15 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+const GOOGLE_TOKEN_KEY = 'shout_google_token'
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
+  const [storedGoogleToken, setStoredGoogleToken] = useState<string | null>(
+    () => localStorage.getItem(GOOGLE_TOKEN_KEY),
+  )
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -34,7 +39,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe()
   }, [])
 
-  const googleToken = session?.provider_token ?? null
+  // Persist Google token when available from OAuth
+  useEffect(() => {
+    if (session?.provider_token) {
+      localStorage.setItem(GOOGLE_TOKEN_KEY, session.provider_token)
+      setStoredGoogleToken(session.provider_token)
+    }
+  }, [session?.provider_token])
+
+  // Use fresh provider_token if available, otherwise fall back to stored
+  const googleToken = session?.provider_token ?? storedGoogleToken
 
   async function signInWithGoogle() {
     await supabase.auth.signInWithOAuth({
@@ -42,11 +56,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       options: {
         scopes: 'https://www.googleapis.com/auth/calendar',
         redirectTo: window.location.origin,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        },
       },
     })
   }
 
   async function signOut() {
+    localStorage.removeItem(GOOGLE_TOKEN_KEY)
+    setStoredGoogleToken(null)
     await supabase.auth.signOut()
   }
 

@@ -163,8 +163,13 @@ export default function App() {
           const dedupedGoogle = mapped.filter((e) => !appGoogleIds.has(e.googleEventId))
           return [...nonGoogle, ...dedupedGoogle]
         })
-      } catch (err) {
+      } catch (err: unknown) {
         console.error('Failed to fetch Google Calendar events:', err)
+        // If token expired, clear it so user can reconnect
+        if (err instanceof Error && (err.message.includes('401') || err.message.includes('Invalid Credentials'))) {
+          localStorage.removeItem('shout_google_token')
+          showToast('Google Calendar disconnected — sign out and back in to reconnect')
+        }
       }
     }
 
