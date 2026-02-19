@@ -114,13 +114,9 @@ export default function App() {
         const events = await fetchEvents(dateToString(start), dateToString(end))
         if (cancelled) return
         setCalendarEvents((prev) => {
-          // Keep google-origin events, but filter out duplicates of app-created events
+          // Keep all Google-origin events, merge with DB events
           const googleEvents = prev.filter((e) => e.isGoogleEvent)
-          const dbGoogleIds = new Set(events.filter((e) => e.googleEventId).map((e) => e.googleEventId))
-          const nonConflictingGoogle = googleEvents.filter(
-            (e) => !e.googleEventId || !dbGoogleIds.has(e.googleEventId),
-          )
-          return [...events, ...nonConflictingGoogle]
+          return [...events, ...googleEvents]
         })
       } catch (err) {
         console.error('Failed to load events:', err)
@@ -160,11 +156,11 @@ export default function App() {
         )
         setCalendarEvents((prev) => {
           const nonGoogle = prev.filter((e) => !e.isGoogleEvent)
-          // Filter out Google events that correspond to app-created events (dedup)
-          const appGoogleIds = new Set(nonGoogle.filter((e) => e.googleEventId).map((e) => e.googleEventId))
-          const dedupedGoogle = mapped.filter(
-            (e) => !e.googleEventId || !appGoogleIds.has(e.googleEventId),
+          // Dedup: skip Google events that already exist as app-created events
+          const appGoogleIds = new Set(
+            nonGoogle.filter((e) => e.googleEventId).map((e) => e.googleEventId),
           )
+          const dedupedGoogle = mapped.filter((e) => !appGoogleIds.has(e.googleEventId))
           return [...nonGoogle, ...dedupedGoogle]
         })
       } catch (err) {
