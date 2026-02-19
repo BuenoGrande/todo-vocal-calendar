@@ -40,8 +40,8 @@ import CompletionCounter from './components/CompletionCounter'
 import LoginScreen from './components/LoginScreen'
 import AnimatedBackground from './components/AnimatedBackground'
 
-const EVENT_COLORS = ['#FF3300', '#FF6B00', '#FF9500', '#FFD700', '#00C853', '#2979FF']
-const GOOGLE_EVENT_COLOR = '#34a853'
+const EVENT_COLORS = ['#6366f1', '#8b5cf6', '#3b82f6', '#06b6d4', '#f59e0b', '#ec4899']
+const GOOGLE_EVENT_COLOR = '#3b82f6'
 
 function dateToString(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -574,7 +574,7 @@ export default function App() {
   if (loading) {
     return (
       <div className="h-screen w-screen bg-black flex items-center justify-center">
-        <div className="text-[#FF3300] text-2xl font-black animate-pulse">SHOUT</div>
+        <div className="text-white text-2xl font-black animate-pulse">SHOUT</div>
       </div>
     )
   }
@@ -597,7 +597,7 @@ export default function App() {
         <header className="relative z-10 flex items-center justify-between px-5 py-3 border-b border-[#1a1a1a]">
           <div className="flex items-center gap-3">
             <h1 className="text-lg font-black text-white tracking-tight">
-              SH<span className="text-[#FF3300]">OU</span>T
+              SH<span className="text-white/60">OU</span>T
             </h1>
           </div>
 
@@ -610,7 +610,7 @@ export default function App() {
         {/* Main content */}
         <div className="relative z-10 flex flex-1 overflow-hidden">
           {/* Todo panel */}
-          <div className="w-[380px] flex-shrink-0 p-4 border-r border-[#1a1a1a]">
+          <div className="w-[420px] flex-shrink-0 p-4 border-r border-[#1a1a1a]">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-base font-semibold text-white">Tasks</h2>
               <span className="text-xs text-[#555] font-medium">
@@ -625,7 +625,7 @@ export default function App() {
                 onClick={handleAISchedule}
                 disabled={todos.length === 0 || isScheduling}
                 title="AI auto-schedule all tasks"
-                className="flex-1 h-9 px-3 rounded-lg bg-[#FF3300] text-white text-sm font-medium hover:bg-[#FF4400] hover:scale-[1.02] disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                className="flex-1 h-9 px-3 rounded-lg bg-white text-black text-sm font-semibold hover:bg-white/90 hover:scale-[1.02] disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 {isScheduling ? (
                   <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -679,9 +679,9 @@ export default function App() {
         {/* Drag overlay */}
         <DragOverlay>
           {activeTodo ? (
-            <div className="px-4 py-2.5 bg-[#111] rounded-xl border border-[#FF3300]/30 shadow-xl shadow-[#FF3300]/10 text-sm text-white font-medium max-w-[300px] truncate">
+            <div className="px-4 py-2.5 bg-[#111] rounded-xl border border-white/20 shadow-xl text-sm text-white font-medium max-w-[300px] truncate">
               {activeTodo.title}
-              <span className="ml-2 text-xs text-[#FF3300]">{activeTodo.duration}m</span>
+              <span className="ml-2 text-xs text-[#888]">{activeTodo.duration}m</span>
             </div>
           ) : null}
         </DragOverlay>

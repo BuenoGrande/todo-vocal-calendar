@@ -8,9 +8,9 @@ export default function GoogleCalendarButton() {
   return (
     <div className="flex items-center gap-3">
       {googleToken && (
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#FF3300]/10 border border-[#FF3300]/20">
-          <div className="w-1.5 h-1.5 rounded-full bg-[#FF3300]" />
-          <span className="text-[10px] font-medium text-[#FF3300]">Calendar synced</span>
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#3b82f6]/10 border border-[#3b82f6]/20">
+          <div className="w-1.5 h-1.5 rounded-full bg-[#3b82f6]" />
+          <span className="text-[10px] font-medium text-[#3b82f6]">Calendar synced</span>
         </div>
       )}
 

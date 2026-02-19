@@ -35,7 +35,7 @@ export default function CompletionCounter({ count }: CompletionCounterProps) {
             cy="20"
             r="18"
             fill="none"
-            stroke="#FF3300"
+            stroke="#ffffff"
             strokeWidth="3"
             strokeLinecap="round"
             strokeDasharray={circumference}

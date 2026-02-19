@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import {
   SortableContext,
   verticalListSortingStrategy,
@@ -64,6 +64,7 @@ function SortableTodoItem({
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState(todo.title)
   const [editDuration, setEditDuration] = useState(todo.duration)
+  const editRef = useRef<HTMLDivElement>(null)
 
   const isPriority = index < 3
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
@@ -84,19 +85,31 @@ function SortableTodoItem({
     setIsEditing(false)
   }
 
+  // Click outside to save and close edit mode
+  useEffect(() => {
+    if (!isEditing) return
+    function handleClickOutside(e: MouseEvent) {
+      if (editRef.current && !editRef.current.contains(e.target as Node)) {
+        saveEdit()
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  })
+
   return (
     <div
       ref={setNodeRef}
       style={style}
       className={`group flex items-center gap-2 px-3 py-2.5 rounded-xl border transition-all duration-200 ${
         isPriority
-          ? 'bg-[#0a0a0a] border-[#FF3300]/20 hover:border-[#FF3300]/40 hover:translate-x-1'
+          ? 'bg-[#0a0a0a] border-white/10 hover:border-white/20 hover:translate-x-1'
           : 'bg-[#0a0a0a] border-[#1a1a1a] hover:border-[#333] hover:translate-x-1'
-      } ${isDragging ? 'shadow-lg shadow-[#FF3300]/10 z-10' : ''}`}
+      } ${isDragging ? 'shadow-lg shadow-white/5 z-10' : ''}`}
     >
       {/* Priority badge or bullet */}
       {isPriority ? (
-        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#FF3300] text-white text-xs font-bold flex items-center justify-center">
+        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-white text-black text-xs font-bold flex items-center justify-center">
           {index + 1}
         </span>
       ) : (
@@ -122,18 +135,20 @@ function SortableTodoItem({
       </button>
 
       {isEditing ? (
-        <div className="flex-1 flex items-center gap-2">
+        <div ref={editRef} className="flex-1 flex items-center gap-1 min-w-0 overflow-hidden">
           <input
             value={editTitle}
             onChange={(e) => setEditTitle(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && saveEdit()}
-            className="flex-1 px-2 py-1 text-sm rounded bg-[#111] border border-[#333] text-white focus:outline-none focus:border-[#FF3300]/50"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') saveEdit()
+              if (e.key === 'Escape') setIsEditing(false)
+            }}
+            className="flex-1 min-w-0 px-2 py-1 text-sm rounded bg-[#111] border border-[#333] text-white focus:outline-none focus:border-white/30"
             autoFocus
           />
-          <DurationStepper value={editDuration} onChange={setEditDuration} small />
           <button
             onClick={saveEdit}
-            className="text-[#FF3300] hover:text-[#FF4400] cursor-pointer"
+            className="flex-shrink-0 text-white hover:text-white/80 cursor-pointer"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -156,14 +171,14 @@ function SortableTodoItem({
           </div>
           <span className={`flex-shrink-0 text-xs font-medium px-2.5 py-1 rounded-full ${
             isPriority
-              ? 'bg-[#FF3300]/10 text-[#FF3300]'
+              ? 'bg-white/10 text-white/70'
               : 'bg-[#1a1a1a] text-[#666]'
           }`}>
             {todo.duration}m
           </span>
           <button
             onClick={onDelete}
-            className="flex-shrink-0 opacity-0 group-hover:opacity-100 text-[#333] hover:text-[#FF3300] transition-all cursor-pointer"
+            className="flex-shrink-0 opacity-0 group-hover:opacity-100 text-[#333] hover:text-red-400 transition-all cursor-pointer"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -207,7 +222,7 @@ export default function TodoList({ todos, onAddTodo, onUpdateTodo, onDeleteTodo 
           <button
             onClick={handleAdd}
             disabled={!newTask.trim()}
-            className="px-4 py-1.5 rounded-full bg-[#FF3300] text-white text-sm font-medium hover:bg-[#FF4400] hover:scale-105 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+            className="px-4 py-1.5 rounded-full bg-white text-black text-sm font-semibold hover:bg-white/90 hover:scale-105 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
           >
             Add
           </button>
@@ -229,7 +244,7 @@ export default function TodoList({ todos, onAddTodo, onUpdateTodo, onDeleteTodo 
             {/* Priorities section */}
             {priorities.length > 0 && (
               <div className="mb-4">
-                <h3 className="text-[10px] uppercase tracking-widest text-[#FF3300] font-bold mb-2 px-1">
+                <h3 className="text-[10px] uppercase tracking-widest text-white/50 font-bold mb-2 px-1">
                   Priorities
                 </h3>
                 <div className="space-y-2">

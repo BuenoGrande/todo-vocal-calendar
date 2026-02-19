@@ -76,7 +76,7 @@ export default function DayNavigation({ viewDate, viewMode, onDateChange, onView
         {!isToday && (
           <button
             onClick={goToToday}
-            className="px-3 py-1 text-xs font-medium text-[#FF3300] border border-[#FF3300]/30 rounded-lg hover:bg-[#FF3300]/10 transition-all cursor-pointer"
+            className="px-3 py-1 text-xs font-medium text-white border border-white/20 rounded-lg hover:bg-white/10 transition-all cursor-pointer"
           >
             Today
           </button>

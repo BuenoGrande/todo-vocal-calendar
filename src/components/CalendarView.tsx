@@ -38,7 +38,7 @@ function DroppableSlot({ id, style }: { id: string; style: React.CSSProperties }
     <div
       ref={setNodeRef}
       style={style}
-      className={`absolute transition-colors ${isOver ? 'bg-[#FF3300]/10' : ''}`}
+      className={`absolute transition-colors ${isOver ? 'bg-white/5' : ''}`}
     />
   )
 }
@@ -130,7 +130,7 @@ function DayColumn({
       {/* Day header for multi-day view */}
       {isMultiDay && (
         <div className={`sticky top-0 z-30 px-2 py-2 text-center text-xs font-medium border-b border-[#1a1a1a] ${
-          isToday ? 'text-[#FF3300] bg-[#FF3300]/5' : 'text-[#666] bg-[#0a0a0a]'
+          isToday ? 'text-white bg-white/5' : 'text-[#666] bg-[#0a0a0a]'
         }`}>
           {dayLabel}
         </div>
@@ -142,13 +142,7 @@ function DayColumn({
           key={hour}
           className="absolute left-0 right-0 border-t border-[#1a1a1a]"
           style={{ top: (hour - START_HOUR) * HOUR_HEIGHT }}
-        >
-          {!isMultiDay && (
-            <span className="absolute -top-2.5 left-2 text-[10px] font-medium text-[#444] bg-[#0a0a0a] px-1">
-              {formatHour(hour)}
-            </span>
-          )}
-        </div>
+        />
       ))}
 
       {/* Droppable slots */}
@@ -196,73 +190,66 @@ function DayColumn({
             }}
             onMouseDown={(e) => handleEventMouseDown(e, event.id, 'move')}
           >
-            <div className="flex items-start justify-between gap-1 h-full">
-              <div className="min-w-0 flex-1">
-                <p className={`text-xs font-medium truncate leading-tight ${completed ? 'line-through text-[#555]' : 'text-[#ddd]'}`}>
-                  {event.title}
-                </p>
-                {pos.height > 36 && (
-                  <p className="text-[10px] text-[#555] mt-0.5">
-                    {formatTime(event.start)} - {formatTime(event.end)}
-                  </p>
-                )}
-              </div>
-
-              {/* Action buttons on the right */}
-              {!event.isGoogleEvent && (
-                <div className="flex items-center gap-1 flex-shrink-0 ml-1">
-                  {/* Done button */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      if (onComplete) onComplete(event)
-                      else onEventUpdate(event.id, { completed: !completed })
-                    }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    title={completed ? 'Mark incomplete' : 'Mark done'}
-                    className={`w-6 h-6 rounded-md flex items-center justify-center transition-all cursor-pointer ${
-                      completed
-                        ? 'bg-green-500/20 text-green-400'
-                        : 'opacity-0 group-hover:opacity-100 hover:bg-white/10 text-[#555] hover:text-green-400'
-                    }`}
-                    style={completed ? {} : undefined}
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                    </svg>
-                  </button>
-
-                  {/* Reschedule button */}
-                  {onReschedule && (
+            <div className="flex flex-col gap-0.5 h-full">
+              <div className="flex items-center gap-2 min-w-0">
+                {/* Action buttons inline with title */}
+                {!event.isGoogleEvent && (
+                  <div className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
-                        onReschedule(event)
+                        if (onComplete) onComplete(event)
+                        else onEventUpdate(event.id, { completed: !completed })
                       }}
                       onMouseDown={(e) => e.stopPropagation()}
-                      title="Move back to tasks"
-                      className="w-6 h-6 rounded-md flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-white/10 text-[#555] hover:text-[#FF3300] transition-all cursor-pointer"
+                      title={completed ? 'Mark incomplete' : 'Mark done'}
+                      className={`w-7 h-7 rounded-md flex items-center justify-center transition-all cursor-pointer ${
+                        completed
+                          ? 'bg-white/20 text-white !opacity-100'
+                          : 'hover:bg-white/10 text-[#888] hover:text-white'
+                      }`}
                     >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                       </svg>
                     </button>
-                  )}
-
-                  {/* Delete button */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onEventDelete(event.id)
-                    }}
-                    className="w-6 h-6 rounded-md flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-white/10 text-[#555] hover:text-red-400 transition-all cursor-pointer"
-                    onMouseDown={(e) => e.stopPropagation()}
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
+                    {onReschedule && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onReschedule(event)
+                        }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        title="Move back to tasks"
+                        className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-white/10 text-[#888] hover:text-white transition-all cursor-pointer"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onEventDelete(event.id)
+                      }}
+                      className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-white/10 text-[#888] hover:text-red-400 transition-all cursor-pointer"
+                      onMouseDown={(e) => e.stopPropagation()}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
+                <p className={`text-xs font-medium truncate leading-tight ${completed ? 'line-through text-[#555]' : 'text-[#ddd]'}`}>
+                  {event.title}
+                </p>
+              </div>
+              {pos.height > 36 && (
+                <p className="text-[10px] text-[#555]">
+                  {formatTime(event.start)} - {formatTime(event.end)}
+                </p>
               )}
             </div>
 
