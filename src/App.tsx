@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import {
   DndContext,
   type DragEndEvent,
@@ -58,7 +58,6 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('1-day')
   const [completedToday, setCompletedToday] = useState(0)
   const [dataLoaded, setDataLoaded] = useState(false)
-  const googleFetchedRef = useRef(false)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -124,10 +123,10 @@ export default function App() {
     return () => { cancelled = true }
   }, [user, viewDate, viewMode, dataLoaded])
 
-  // Fetch Google Calendar events when token is available
+  // Fetch Google Calendar events when token is available or view changes
   useEffect(() => {
-    if (!googleToken || !user || googleFetchedRef.current) return
-    googleFetchedRef.current = true
+    if (!googleToken || !user) return
+    let cancelled = false
 
     async function fetchGoogleEvents() {
       try {
@@ -138,6 +137,7 @@ export default function App() {
         end.setHours(23, 59, 59, 999)
 
         const events = await fetchEventsForDateRange(googleToken!, start, end)
+        if (cancelled) return
         const mapped: CalendarEvent[] = events.map(
           (e: { id: string; title: string; start: Date; end: Date }) => ({
             id: `google-${e.id}`,
@@ -160,6 +160,7 @@ export default function App() {
     }
 
     fetchGoogleEvents()
+    return () => { cancelled = true }
   }, [googleToken, user, viewDate, viewMode])
 
   // Add todo
