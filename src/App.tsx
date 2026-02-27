@@ -41,8 +41,24 @@ import CompletionCounter from './components/CompletionCounter'
 import LoginScreen from './components/LoginScreen'
 import AnimatedBackground from './components/AnimatedBackground'
 
-const EVENT_COLORS = ['#FF3300', '#FF6B00', '#FF9500', '#FFB800', '#E8401A', '#FF4D1A']
 const GOOGLE_EVENT_COLOR = '#4A90D9'
+
+/** Priority-based color: index 0 (most urgent) = vivid red, last = muted grey */
+function getPriorityColor(index: number, total: number): string {
+  if (total <= 1) return '#FF3300'
+  const t = index / (total - 1) // 0..1
+  if (t <= 0.6) {
+    // First 60%: hue 12→40, full saturation, bright
+    const hue = 12 + (t / 0.6) * 28
+    return `hsl(${hue}, 100%, 50%)`
+  }
+  // Last 40%: desaturate towards grey, darken slightly
+  const u = (t - 0.6) / 0.4 // 0..1 within this range
+  const hue = 40
+  const sat = 100 - u * 90  // 100→10
+  const lit = 50 - u * 20   // 50→30
+  return `hsl(${hue}, ${sat}%, ${lit}%)`
+}
 
 function dateToString(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -329,7 +345,7 @@ export default function App() {
       const start = new Date(viewDate)
       start.setHours(hours, minutes, 0, 0)
       const end = new Date(start.getTime() + item.duration * 60000)
-      return { todo, start, end, color: EVENT_COLORS[i % EVENT_COLORS.length], dateStr: dateToString(start) }
+      return { todo, start, end, color: getPriorityColor(i, schedule.length), dateStr: dateToString(start) }
     })
 
     // Optimistic UI: show events immediately, remove tasks
@@ -469,7 +485,8 @@ export default function App() {
     // Round up to next 5 minutes
     start.setMinutes(Math.ceil(start.getMinutes() / 5) * 5, 0, 0)
     const end = new Date(start.getTime() + task.duration * 60000)
-    const color = EVENT_COLORS[calendarEvents.filter((e) => !e.isGoogleEvent).length % EVENT_COLORS.length]
+    const todoIndex = todos.findIndex((t) => t.id === task.id)
+    const color = getPriorityColor(todoIndex >= 0 ? todoIndex : 0, todos.length)
     const dateStr = dateToString(start)
 
     const eventData: Omit<CalendarEvent, 'id'> = {
@@ -578,7 +595,53 @@ export default function App() {
     const activeId = String(active.id)
     const overId = String(over.id)
 
-    if (overId.startsWith('slot-')) {
+    if (overId.startsWith('day-target-')) {
+      // Dropped on a day target zone (Tomorrow, +2, +3)
+      const todo = todos.find((t) => t.id === activeId)
+      if (!todo) return
+
+      const targetDateStr = overId.replace('day-target-', '')
+      const [year, month, day] = targetDateStr.split('-').map(Number)
+      const start = new Date(year, month - 1, day, 9, 0, 0, 0) // Default 9:00 AM
+      const end = new Date(start.getTime() + todo.duration * 60000)
+      const todoIndex = todos.findIndex((t) => t.id === todo.id)
+      const color = getPriorityColor(todoIndex >= 0 ? todoIndex : 0, todos.length)
+
+      const eventData: Omit<CalendarEvent, 'id'> = {
+        title: todo.title,
+        start,
+        end,
+        todoId: todo.id,
+        color,
+        date: targetDateStr,
+      }
+
+      // Create in Google Calendar if connected
+      if (googleToken) {
+        createGoogleEvent(googleToken, { title: todo.title, start, end })
+          .then((googleId) => {
+            setCalendarEvents((prev) =>
+              prev.map((e) => (e.todoId === todo.id ? { ...e, googleEventId: googleId } : e)),
+            )
+            updateEvent(todo.id, { googleEventId: googleId }).catch(console.error)
+          })
+          .catch((err) => console.error('Failed to create Google event:', err))
+      }
+
+      try {
+        const created = await createEvent(eventData, user.id)
+        setCalendarEvents((prev) => [...prev, created])
+      } catch (err) {
+        console.error('Failed to create event:', err)
+        setCalendarEvents((prev) => [...prev, { id: crypto.randomUUID(), ...eventData }])
+      }
+
+      setTodos((prev) => prev.filter((t) => t.id !== activeId))
+      await deleteTask(activeId).catch(console.error)
+
+      const dayLabel = new Date(year, month - 1, day).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+      showToast(`Task scheduled for ${dayLabel}`)
+    } else if (overId.startsWith('slot-')) {
       // Dropped on calendar slot — parse date and time from slot id
       const todo = todos.find((t) => t.id === activeId)
       if (!todo) return
@@ -601,7 +664,8 @@ export default function App() {
       const [year, month, day] = dateStr.split('-').map(Number)
       const start = new Date(year, month - 1, day, hours, minutes, 0, 0)
       const end = new Date(start.getTime() + todo.duration * 60000)
-      const color = EVENT_COLORS[calendarEvents.filter((e) => !e.isGoogleEvent).length % EVENT_COLORS.length]
+      const todoIndex = todos.findIndex((t) => t.id === todo.id)
+      const color = getPriorityColor(todoIndex >= 0 ? todoIndex : 0, todos.length)
 
       const eventData: Omit<CalendarEvent, 'id'> = {
         title: todo.title,
@@ -798,6 +862,7 @@ export default function App() {
               onEventDelete={handleEventDelete}
               onReschedule={handleReschedule}
               onComplete={handleComplete}
+              isTaskDragging={!!activeDragId}
             />
           </div>
         </div>

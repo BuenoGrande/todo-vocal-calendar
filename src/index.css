@@ -134,3 +134,32 @@ body {
     transform: translate(var(--confetti-x, 20px), var(--confetti-y, -40px)) rotate(var(--confetti-r, 360deg)) scale(0);
   }
 }
+
+@keyframes flame-dance {
+  0%, 100% { transform: scaleY(1) scaleX(1) skewX(0deg); }
+  25% { transform: scaleY(1.06) scaleX(0.96) skewX(-2deg); }
+  50% { transform: scaleY(0.95) scaleX(1.04) skewX(1deg); }
+  75% { transform: scaleY(1.04) scaleX(0.97) skewX(-1deg); }
+}
+
+@keyframes flame-inner {
+  0%, 100% { transform: scaleY(1) scaleX(1) skewX(0deg); }
+  30% { transform: scaleY(1.08) scaleX(0.94) skewX(2deg); }
+  60% { transform: scaleY(0.93) scaleX(1.05) skewX(-2deg); }
+  80% { transform: scaleY(1.03) scaleX(0.98) skewX(1deg); }
+}
+
+@keyframes flame-core {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+
+@keyframes flame-glow-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.4; }
+  50% { transform: scale(1.15); opacity: 0.7; }
+}
+
+@keyframes ring-burst {
+  0% { transform: scale(0.8); opacity: 1; }
+  100% { transform: scale(2.5); opacity: 0; }
+}

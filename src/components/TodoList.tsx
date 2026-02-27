@@ -110,8 +110,8 @@ function SortableTodoItem({
   const cardBg = (() => {
     if (index === 0) return 'bg-[#FF3300]/[0.04] border-[#FF3300]/20 hover:border-[#FF3300]/35'
     if (index === 1) return 'bg-[#FF6B00]/[0.03] border-[#FF6B00]/15 hover:border-[#FF6B00]/30'
-    if (index === 2) return 'bg-[#0a0a0a] border-white/[0.08] hover:border-white/[0.16]'
-    return 'bg-[#0a0a0a] border-white/[0.04] hover:border-white/[0.10]'
+    if (index === 2) return 'bg-black/70 border-white/[0.08] hover:border-white/[0.16]'
+    return 'bg-black/70 border-white/[0.04] hover:border-white/[0.10]'
   })()
 
   function saveEdit() {
@@ -235,7 +235,7 @@ export default function TodoList({ todos, onAddTodo, onUpdateTodo, onDeleteTodo 
   return (
     <div className="flex flex-col h-full">
       {/* Add task card */}
-      <div className="bg-[#0a0a0a] rounded-xl border border-white/[0.06] p-3 mb-4">
+      <div className="bg-black/70 rounded-xl border border-white/[0.06] p-3 mb-4">
         <input
           value={newTask}
           onChange={(e) => setNewTask(e.target.value)}

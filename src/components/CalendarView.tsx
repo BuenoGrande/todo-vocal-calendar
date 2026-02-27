@@ -15,6 +15,7 @@ interface CalendarViewProps {
   onEventDelete: (id: string) => void
   onReschedule?: (event: CalendarEvent) => void
   onComplete?: (event: CalendarEvent) => void
+  isTaskDragging?: boolean
 }
 
 function formatHour(hour: number): string {
@@ -40,6 +41,23 @@ function DroppableSlot({ id, style }: { id: string; style: React.CSSProperties }
       style={style}
       className={`absolute transition-colors ${isOver ? 'bg-[#FF3300]/[0.08] border border-dashed border-[#FF3300]/30 rounded-md' : ''}`}
     />
+  )
+}
+
+function DayTargetDropZone({ dateStr, label }: { dateStr: string; label: string }) {
+  const { setNodeRef, isOver } = useDroppable({ id: `day-target-${dateStr}` })
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`flex-1 flex items-center justify-center px-3 py-3 rounded-lg border-2 border-dashed transition-all cursor-default ${
+        isOver
+          ? 'border-[#FF3300] bg-[#FF3300]/15 text-white scale-105'
+          : 'border-white/15 bg-white/[0.04] text-white/50 hover:border-white/25 hover:text-white/70'
+      }`}
+    >
+      <span className="text-sm font-medium">{label}</span>
+    </div>
   )
 }
 
@@ -130,7 +148,7 @@ function DayColumn({
       {/* Day header for multi-day view */}
       {isMultiDay && (
         <div className={`sticky top-0 z-30 px-2 py-2 text-center text-xs font-medium border-b border-white/[0.06] ${
-          isToday ? 'text-[#FF3300] bg-[#FF3300]/[0.06]' : 'text-[#666] bg-[#0a0a0a]'
+          isToday ? 'text-[#FF3300] bg-[#FF3300]/[0.06]' : 'text-[#666] bg-black/70'
         }`}>
           {dayLabel}
         </div>
@@ -295,6 +313,7 @@ export default function CalendarView({
   onEventDelete,
   onReschedule,
   onComplete,
+  isTaskDragging,
 }: CalendarViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [dragState, setDragState] = useState<DragState | null>(null)
@@ -312,6 +331,17 @@ export default function CalendarView({
     }
   } else {
     visibleDates.push(new Date(viewDate))
+  }
+
+  // Compute day targets for 1-day view drag
+  const dayTargets: { dateStr: string; label: string }[] = []
+  if (viewMode === '1-day' && isTaskDragging) {
+    for (let i = 1; i <= 3; i++) {
+      const d = new Date(viewDate)
+      d.setDate(d.getDate() + i)
+      const label = i === 1 ? 'Tomorrow' : `+${i} days`
+      dayTargets.push({ dateStr: dateToString(d), label })
+    }
   }
 
   function handleEventMouseDown(
@@ -392,42 +422,54 @@ export default function CalendarView({
   }, [])
 
   return (
-    <div
-      ref={containerRef}
-      className="flex-1 overflow-y-auto min-h-0 bg-[#0a0a0a] rounded-xl border border-white/[0.06]"
-    >
-      <div className="flex" style={{ minHeight: (END_HOUR - START_HOUR) * HOUR_HEIGHT }}>
-        {/* Time labels column */}
-        <div className="w-12 flex-shrink-0 relative">
-          {hours.map((hour) => (
-            <div
-              key={hour}
-              className="absolute left-0 right-0"
-              style={{ top: (hour - START_HOUR) * HOUR_HEIGHT }}
-            >
-              <span className="absolute -top-2.5 left-2 text-[10px] font-medium text-[#444]">
-                {formatHour(hour)}
-              </span>
-            </div>
+    <div className="flex-1 flex flex-col min-h-0 gap-2">
+      {/* Day target drop zones — shown above calendar during task drag in 1-day view */}
+      {dayTargets.length > 0 && (
+        <div className="flex gap-2 animate-[fadeIn_0.15s_ease-out]">
+          {dayTargets.map((target) => (
+            <DayTargetDropZone key={target.dateStr} dateStr={target.dateStr} label={target.label} />
           ))}
         </div>
+      )}
 
-        {/* Day columns */}
-        {visibleDates.map((date, i) => (
-          <DayColumn
-            key={dateToString(date)}
-            date={date}
-            events={events}
-            dayOffset={i}
-            isMultiDay={viewMode === '3-day'}
-            dragState={dragState}
-            onEventMouseDown={handleEventMouseDown}
-            onEventUpdate={onEventUpdate}
-            onEventDelete={onEventDelete}
-            onReschedule={onReschedule}
-            onComplete={onComplete}
-          />
-        ))}
+      {/* Calendar grid */}
+      <div
+        ref={containerRef}
+        className="flex-1 overflow-y-auto min-h-0 bg-black/70 rounded-xl border border-white/[0.06]"
+      >
+        <div className="flex" style={{ minHeight: (END_HOUR - START_HOUR) * HOUR_HEIGHT }}>
+          {/* Time labels column */}
+          <div className="w-12 flex-shrink-0 relative">
+            {hours.map((hour) => (
+              <div
+                key={hour}
+                className="absolute left-0 right-0"
+                style={{ top: (hour - START_HOUR) * HOUR_HEIGHT }}
+              >
+                <span className="absolute -top-2.5 left-2 text-[10px] font-medium text-[#444]">
+                  {formatHour(hour)}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Day columns */}
+          {visibleDates.map((date, i) => (
+            <DayColumn
+              key={dateToString(date)}
+              date={date}
+              events={events}
+              dayOffset={i}
+              isMultiDay={viewMode === '3-day'}
+              dragState={dragState}
+              onEventMouseDown={handleEventMouseDown}
+              onEventUpdate={onEventUpdate}
+              onEventDelete={onEventDelete}
+              onReschedule={onReschedule}
+              onComplete={onComplete}
+            />
+          ))}
+        </div>
       </div>
     </div>
   )

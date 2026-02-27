@@ -33,6 +33,8 @@ export default function CompletionCounter({ count, streak, onMilestone }: Comple
   const xpProgress = (xpInLevel / XP_PER_LEVEL) * 100
   const dailyFilled = Math.min(count, DAILY_GOAL)
 
+  const flameScale = Math.min(1 + streak * 0.12, 2.0)
+
   useEffect(() => {
     const prev = prevCountRef.current
     prevCountRef.current = count
@@ -58,19 +60,8 @@ export default function CompletionCounter({ count, streak, onMilestone }: Comple
   }, [count, level, onMilestone])
 
   return (
-    <div className="relative flex items-center gap-4 px-3 py-2 rounded-xl bg-[#111] border border-white/[0.06]">
-      {/* Streak */}
-      <div className="flex items-center gap-1.5" title={`${streak}-day streak`}>
-        <span
-          className="text-base leading-none"
-          style={{ animation: streak > 0 ? 'flicker 1.5s ease-in-out infinite' : undefined, display: 'inline-block' }}
-        >
-          🔥
-        </span>
-        <span className="text-xs font-bold text-white tabular-nums">{streak}</span>
-      </div>
-
-      {/* XP / Level */}
+    <div className="relative flex items-center gap-4 px-3 py-2 rounded-xl bg-[#111]/80 border border-white/[0.06]">
+      {/* XP / Level — left */}
       <div className="flex items-center gap-2">
         <span
           className={`text-[10px] font-black px-1.5 py-0.5 rounded bg-[#FF3300] text-white leading-none ${levelBurst ? 'animate-[level-burst_0.5s_ease-out]' : ''}`}
@@ -91,7 +82,64 @@ export default function CompletionCounter({ count, streak, onMilestone }: Comple
         </div>
       </div>
 
-      {/* Daily goal segments */}
+      {/* Hero flame — center */}
+      <div className="relative flex flex-col items-center" title={`${streak}-day streak`}>
+        {/* Radial glow behind flame */}
+        <div
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full pointer-events-none"
+          style={{
+            width: 40 * flameScale,
+            height: 40 * flameScale,
+            background: `radial-gradient(circle, rgba(255,107,0,0.4) 0%, transparent 70%)`,
+            animation: 'flame-glow-pulse 2s ease-in-out infinite',
+          }}
+        />
+
+        {/* Level-up ring burst */}
+        {levelBurst && (
+          <div
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#FFD700] pointer-events-none"
+            style={{
+              width: 32,
+              height: 32,
+              animation: 'ring-burst 0.6s ease-out forwards',
+            }}
+          />
+        )}
+
+        {/* SVG flame */}
+        <svg
+          width={28 * flameScale}
+          height={34 * flameScale}
+          viewBox="0 0 28 34"
+          fill="none"
+          className="relative z-10"
+        >
+          {/* Outer flame */}
+          <path
+            d="M14 2C14 2 6 10 6 18C6 24 9.5 28 14 30C18.5 28 22 24 22 18C22 10 14 2 14 2Z"
+            fill="#FF3300"
+            style={{ animation: 'flame-dance 2s ease-in-out infinite', transformOrigin: 'center bottom' }}
+          />
+          {/* Inner flame */}
+          <path
+            d="M14 8C14 8 9 14 9 20C9 24 11.5 26.5 14 28C16.5 26.5 19 24 19 20C19 14 14 8 14 8Z"
+            fill="#FF6B00"
+            style={{ animation: 'flame-inner 1.8s ease-in-out infinite', transformOrigin: 'center bottom' }}
+          />
+          {/* Core glow */}
+          <path
+            d="M14 14C14 14 11 18 11 22C11 24.5 12.5 26 14 26.5C15.5 26 17 24.5 17 22C17 18 14 14 14 14Z"
+            fill="#FFD700"
+            style={{ animation: 'flame-core 1.2s ease-in-out infinite', transformOrigin: 'center bottom' }}
+          />
+        </svg>
+
+        {/* Streak count below flame */}
+        <span className="text-[10px] font-bold text-white/70 tabular-nums leading-none mt-0.5">{streak}</span>
+      </div>
+
+      {/* Daily goal segments — right */}
       <div className="flex items-center gap-1.5" title={`${dailyFilled}/${DAILY_GOAL} daily goal`}>
         <div className="flex items-center gap-0.5">
           {Array.from({ length: DAILY_GOAL }).map((_, i) => (
