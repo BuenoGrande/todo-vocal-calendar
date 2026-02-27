@@ -114,9 +114,15 @@ export default function App() {
         const events = await fetchEvents(dateToString(start), dateToString(end))
         if (cancelled) return
         setCalendarEvents((prev) => {
-          // Keep all Google-origin events, merge with DB events
+          // Keep Google-origin events, but skip ones that duplicate app-created events
           const googleEvents = prev.filter((e) => e.isGoogleEvent)
-          return [...events, ...googleEvents]
+          const dbGoogleIds = new Set(
+            events.filter((e) => e.googleEventId).map((e) => e.googleEventId),
+          )
+          const dedupedGoogle = googleEvents.filter(
+            (e) => !dbGoogleIds.has(e.googleEventId),
+          )
+          return [...events, ...dedupedGoogle]
         })
       } catch (err) {
         console.error('Failed to load events:', err)
