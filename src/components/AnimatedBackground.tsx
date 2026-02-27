@@ -19,12 +19,25 @@ export default function AnimatedBackground() {
   }, [])
 
   return (
-    <div
-      ref={ref}
-      className="absolute inset-0 pointer-events-none"
-      style={{
-        background: 'radial-gradient(600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(255, 51, 0, 0.06), transparent 40%)',
-      }}
-    />
+    <>
+      {/* Static ambient glow layer */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: [
+            'radial-gradient(800px circle at 10% 90%, rgba(255, 51, 0, 0.08), transparent 50%)',
+            'radial-gradient(600px circle at 90% 10%, rgba(255, 107, 0, 0.05), transparent 50%)',
+          ].join(', '),
+        }}
+      />
+      {/* Mouse-tracking spotlight layer */}
+      <div
+        ref={ref}
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: 'radial-gradient(500px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(255, 51, 0, 0.07), transparent 40%)',
+        }}
+      />
+    </>
   )
 }

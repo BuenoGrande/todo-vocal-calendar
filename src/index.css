@@ -5,11 +5,13 @@
   --color-accent: #FF3300;
   --color-accent-light: #FF6633;
   --color-accent-dark: #CC2900;
+  --color-accent-amber: #FF6B00;
+  --color-xp-gold: #FFD700;
 }
 
 body {
   margin: 0;
-  background: #000000;
+  background: #0d0d0d;
   color: #ffffff;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -74,9 +76,9 @@ body {
 }
 
 .shimmer {
-  background: linear-gradient(90deg, transparent 0%, rgba(255,51,0,0.08) 50%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(255,51,0,0.12) 50%, transparent 100%);
   background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
+  animation: shimmer 2.5s ease-in-out infinite;
 }
 
 @keyframes fadeIn {
@@ -87,4 +89,48 @@ body {
 @keyframes glow {
   0%, 100% { box-shadow: 0 0 8px rgba(255, 51, 0, 0.3); }
   50% { box-shadow: 0 0 16px rgba(255, 51, 0, 0.5); }
+}
+
+/* New keyframes */
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-enter {
+  animation: slide-up 0.3s ease-out both;
+}
+
+@keyframes xp-fill {
+  from { width: 0%; }
+}
+
+@keyframes level-burst {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.35); }
+  70% { transform: scale(0.95); }
+  100% { transform: scale(1); }
+}
+
+@keyframes flicker {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  25% { opacity: 0.85; transform: scale(1.08) rotate(-3deg); }
+  50% { opacity: 1; transform: scale(0.95) rotate(2deg); }
+  75% { opacity: 0.9; transform: scale(1.05) rotate(-1deg); }
+}
+
+@keyframes badge-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 51, 0, 0.4); }
+  50% { box-shadow: 0 0 8px 2px rgba(255, 51, 0, 0.3); }
+}
+
+@keyframes confetti-fly {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0deg) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--confetti-x, 20px), var(--confetti-y, -40px)) rotate(var(--confetti-r, 360deg)) scale(0);
+  }
 }

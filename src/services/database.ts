@@ -190,3 +190,23 @@ export async function incrementCompletionStats(
     })
   }
 }
+
+export async function fetchRecentStats(days: number): Promise<{ date: string; tasksCompleted: number }[]> {
+  const dates: string[] = []
+  for (let i = 0; i < days; i++) {
+    const d = new Date()
+    d.setDate(d.getDate() - i)
+    dates.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)
+  }
+
+  const { data, error } = await supabase
+    .from('daily_stats')
+    .select('date, tasks_completed')
+    .in('date', dates)
+
+  if (error) throw error
+  return (data || []).map((row) => ({
+    date: row.date,
+    tasksCompleted: row.tasks_completed ?? 0,
+  }))
+}

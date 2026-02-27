@@ -29,6 +29,7 @@ import {
   deleteEvent,
   getCompletionStats,
   incrementCompletionStats,
+  fetchRecentStats,
 } from './services/database'
 import { useAuth } from './contexts/AuthContext'
 import GoogleCalendarButton from './components/GoogleCalendarButton'
@@ -40,11 +41,28 @@ import CompletionCounter from './components/CompletionCounter'
 import LoginScreen from './components/LoginScreen'
 import AnimatedBackground from './components/AnimatedBackground'
 
-const EVENT_COLORS = ['#6366f1', '#8b5cf6', '#3b82f6', '#06b6d4', '#f59e0b', '#ec4899']
-const GOOGLE_EVENT_COLOR = '#3b82f6'
+const EVENT_COLORS = ['#FF3300', '#FF6B00', '#FF9500', '#FFB800', '#E8401A', '#FF4D1A']
+const GOOGLE_EVENT_COLOR = '#4A90D9'
 
 function dateToString(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function computeStreak(stats: { date: string; tasksCompleted: number }[]): number {
+  const completedDates = new Set(stats.filter((s) => s.tasksCompleted > 0).map((s) => s.date))
+  let streak = 0
+  // Start from yesterday, count consecutive days backwards
+  for (let i = 1; i <= 7; i++) {
+    const d = new Date()
+    d.setDate(d.getDate() - i)
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    if (completedDates.has(dateStr)) {
+      streak++
+    } else {
+      break
+    }
+  }
+  return streak
 }
 
 export default function App() {
@@ -57,6 +75,7 @@ export default function App() {
   const [viewDate, setViewDate] = useState(new Date())
   const [viewMode, setViewMode] = useState<ViewMode>('1-day')
   const [completedToday, setCompletedToday] = useState(0)
+  const [streak, setStreak] = useState(0)
   const [dataLoaded, setDataLoaded] = useState(false)
   const [nextTaskSuggestion, setNextTaskSuggestion] = useState<{
     taskName: string
@@ -81,13 +100,15 @@ export default function App() {
 
     async function loadData() {
       try {
-        const [tasks, stats] = await Promise.all([
+        const [tasks, stats, recentStats] = await Promise.all([
           fetchTasks(),
           getCompletionStats(dateToString(new Date())),
+          fetchRecentStats(7),
         ])
         if (cancelled) return
         setTodos(tasks)
         setCompletedToday(stats.tasksCompleted)
+        setStreak(computeStreak(recentStats))
         setDataLoaded(true)
       } catch (err) {
         console.error('Failed to load data:', err)
@@ -661,13 +682,20 @@ export default function App() {
     return () => document.removeEventListener('mouseup', handleGlobalMouseUp)
   }, [calendarEvents, syncEventToGoogle])
 
+  // Milestone callback for toast
+  const handleMilestone = useCallback((message: string) => {
+    showToast(message)
+  }, [])
+
   const activeTodo = activeDragId ? todos.find((t) => t.id === activeDragId) : null
 
   // Loading state
   if (loading) {
     return (
-      <div className="h-screen w-screen bg-black flex items-center justify-center">
-        <div className="text-white text-2xl font-black animate-pulse">SHOUT</div>
+      <div className="h-screen w-screen bg-[#0d0d0d] flex items-center justify-center">
+        <div className="text-white text-2xl font-black animate-pulse">
+          <span className="text-[#FF3300]">S</span>HOUT
+        </div>
       </div>
     )
   }
@@ -683,19 +711,19 @@ export default function App() {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="h-screen flex flex-col bg-black font-sans relative">
+      <div className="h-screen flex flex-col bg-[#0d0d0d] font-sans relative">
         <AnimatedBackground />
 
         {/* Header */}
-        <header className="relative z-10 flex items-center justify-between px-5 py-3 border-b border-[#1a1a1a]">
+        <header className="relative z-10 flex items-center justify-between px-5 py-3 border-b border-white/[0.06]">
           <div className="flex items-center gap-3">
             <h1 className="text-lg font-black text-white tracking-tight">
-              SH<span className="text-white/60">OU</span>T
+              <span className="text-[#FF3300]">SH</span><span className="text-white/60">OU</span>T
             </h1>
           </div>
 
           <div className="flex items-center gap-4">
-            <CompletionCounter count={completedToday} />
+            <CompletionCounter count={completedToday} streak={streak} onMilestone={handleMilestone} />
             <GoogleCalendarButton />
           </div>
         </header>
@@ -703,7 +731,7 @@ export default function App() {
         {/* Main content */}
         <div className="relative z-10 flex flex-1 overflow-hidden">
           {/* Todo panel */}
-          <div className="w-[420px] flex-shrink-0 p-4 border-r border-[#1a1a1a]">
+          <div className="w-[420px] flex-shrink-0 p-4 border-r border-white/[0.06]">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-base font-semibold text-white">Tasks</h2>
               <span className="text-xs text-[#555] font-medium">
@@ -718,7 +746,7 @@ export default function App() {
                 onClick={handleAISchedule}
                 disabled={todos.length === 0 || isScheduling}
                 title="AI auto-schedule all tasks"
-                className="flex-1 h-9 px-3 rounded-lg bg-white text-black text-sm font-semibold hover:bg-white/90 hover:scale-[1.02] disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                className="flex-1 h-9 px-3 rounded-lg bg-[#FF3300] text-white text-sm font-semibold hover:bg-[#FF3300]/90 hover:scale-[1.02] disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 {isScheduling ? (
                   <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -776,11 +804,11 @@ export default function App() {
 
         {/* Next task suggestion */}
         {nextTaskSuggestion && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 bg-[#1a1a1a] text-white text-sm rounded-xl border border-[#333] shadow-lg animate-[fadeIn_0.2s_ease-out] flex items-center gap-3">
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 bg-[#141414] text-white text-sm rounded-xl border border-[#FF3300]/20 shadow-lg shadow-[#FF3300]/5 animate-[fadeIn_0.2s_ease-out] flex items-center gap-3">
             <span>Finished early! Schedule <strong>{nextTaskSuggestion.taskName}</strong>?</span>
             <button
               onClick={handleScheduleNextTask}
-              className="px-3 py-1.5 bg-white text-black text-xs font-semibold rounded-lg hover:bg-white/90 transition-all cursor-pointer"
+              className="px-3 py-1.5 bg-[#FF3300] text-white text-xs font-semibold rounded-lg hover:bg-[#FF3300]/90 transition-all cursor-pointer"
             >
               Schedule now
             </button>
@@ -795,7 +823,7 @@ export default function App() {
 
         {/* Toast */}
         {toast && !nextTaskSuggestion && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 bg-[#1a1a1a] text-white text-sm rounded-xl border border-[#333] shadow-lg animate-[fadeIn_0.2s_ease-out]">
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 bg-[#141414] text-white text-sm rounded-xl border border-[#FF3300]/20 shadow-lg shadow-[#FF3300]/5 animate-[fadeIn_0.2s_ease-out]">
             {toast}
           </div>
         )}
@@ -803,7 +831,7 @@ export default function App() {
         {/* Drag overlay */}
         <DragOverlay>
           {activeTodo ? (
-            <div className="px-4 py-2.5 bg-[#111] rounded-xl border border-white/20 shadow-xl text-sm text-white font-medium max-w-[300px] truncate">
+            <div className="px-4 py-2.5 bg-[#141414] rounded-xl border border-[#FF3300]/20 shadow-xl shadow-[#FF3300]/10 text-sm text-white font-medium max-w-[300px] truncate">
               {activeTodo.title}
               <span className="ml-2 text-xs text-[#888]">{activeTodo.duration}m</span>
             </div>

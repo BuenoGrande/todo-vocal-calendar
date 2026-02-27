@@ -52,7 +52,7 @@ export default function DayNavigation({ viewDate, viewMode, onDateChange, onView
         <div className="flex items-center gap-1">
           <button
             onClick={() => navigate(-1)}
-            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/5 text-[#888] hover:text-white transition-all cursor-pointer"
+            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#FF3300]/10 text-[#888] hover:text-[#FF3300] transition-all cursor-pointer"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -60,7 +60,7 @@ export default function DayNavigation({ viewDate, viewMode, onDateChange, onView
           </button>
           <button
             onClick={() => navigate(1)}
-            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/5 text-[#888] hover:text-white transition-all cursor-pointer"
+            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#FF3300]/10 text-[#888] hover:text-[#FF3300] transition-all cursor-pointer"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -76,7 +76,7 @@ export default function DayNavigation({ viewDate, viewMode, onDateChange, onView
         {!isToday && (
           <button
             onClick={goToToday}
-            className="px-3 py-1 text-xs font-medium text-white border border-white/20 rounded-lg hover:bg-white/10 transition-all cursor-pointer"
+            className="px-3 py-1 text-xs font-medium text-[#FF3300] border border-[#FF3300]/30 rounded-lg hover:bg-[#FF3300]/10 transition-all cursor-pointer"
           >
             Today
           </button>
@@ -84,12 +84,12 @@ export default function DayNavigation({ viewDate, viewMode, onDateChange, onView
       </div>
 
       {/* View mode toggle */}
-      <div className="flex items-center gap-1 bg-[#111] rounded-lg p-0.5 border border-[#222]">
+      <div className="flex items-center gap-1 bg-[#111] rounded-lg p-0.5 border border-white/[0.06]">
         <button
           onClick={() => onViewModeChange('1-day')}
           className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all cursor-pointer ${
             viewMode === '1-day'
-              ? 'bg-[#222] text-white'
+              ? 'bg-[#FF3300] text-white'
               : 'text-[#666] hover:text-[#888]'
           }`}
         >
@@ -99,7 +99,7 @@ export default function DayNavigation({ viewDate, viewMode, onDateChange, onView
           onClick={() => onViewModeChange('3-day')}
           className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all cursor-pointer ${
             viewMode === '3-day'
-              ? 'bg-[#222] text-white'
+              ? 'bg-[#FF3300] text-white'
               : 'text-[#666] hover:text-[#888]'
           }`}
         >

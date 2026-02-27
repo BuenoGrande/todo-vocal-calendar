@@ -28,7 +28,7 @@ function DurationStepper({
       <button
         type="button"
         onClick={() => onChange(Math.max(5, value - 5))}
-        className={`flex items-center justify-center rounded-md bg-[#1a1a1a] hover:bg-[#222] text-[#666] hover:text-[#888] transition-colors cursor-pointer ${small ? 'w-6 h-6' : 'w-7 h-7'}`}
+        className={`flex items-center justify-center rounded-md bg-[#1a1a1a] hover:bg-[#FF3300]/10 text-[#666] hover:text-[#FF3300] transition-colors cursor-pointer ${small ? 'w-6 h-6' : 'w-7 h-7'}`}
       >
         <svg className={small ? 'w-3 h-3' : 'w-3.5 h-3.5'} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
@@ -40,7 +40,7 @@ function DurationStepper({
       <button
         type="button"
         onClick={() => onChange(value + 5)}
-        className={`flex items-center justify-center rounded-md bg-[#1a1a1a] hover:bg-[#222] text-[#666] hover:text-[#888] transition-colors cursor-pointer ${small ? 'w-6 h-6' : 'w-7 h-7'}`}
+        className={`flex items-center justify-center rounded-md bg-[#1a1a1a] hover:bg-[#FF3300]/10 text-[#666] hover:text-[#FF3300] transition-colors cursor-pointer ${small ? 'w-6 h-6' : 'w-7 h-7'}`}
       >
         <svg className={small ? 'w-3 h-3' : 'w-3.5 h-3.5'} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -74,7 +74,45 @@ function SortableTodoItem({
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
+    animationDelay: `${index * 40}ms`,
   }
+
+  // Priority-specific badge and card styles
+  const badgeEl = (() => {
+    if (index === 0) {
+      return (
+        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#FF3300] text-white text-xs font-bold flex items-center justify-center" style={{ animation: 'badge-breathe 2s ease-in-out infinite' }}>
+          1
+        </span>
+      )
+    }
+    if (index === 1) {
+      return (
+        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#FF6B00] text-white text-xs font-bold flex items-center justify-center">
+          2
+        </span>
+      )
+    }
+    if (index === 2) {
+      return (
+        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#1c1c1c] border border-[#FF9500]/40 text-[#FF9500] text-xs font-bold flex items-center justify-center">
+          3
+        </span>
+      )
+    }
+    return (
+      <span className="flex-shrink-0 w-6 h-6 flex items-center justify-center text-[#444]">
+        <span className="w-1.5 h-1.5 rounded-full bg-[#444]" />
+      </span>
+    )
+  })()
+
+  const cardBg = (() => {
+    if (index === 0) return 'bg-[#FF3300]/[0.04] border-[#FF3300]/20 hover:border-[#FF3300]/35'
+    if (index === 1) return 'bg-[#FF6B00]/[0.03] border-[#FF6B00]/15 hover:border-[#FF6B00]/30'
+    if (index === 2) return 'bg-[#0a0a0a] border-white/[0.08] hover:border-white/[0.16]'
+    return 'bg-[#0a0a0a] border-white/[0.04] hover:border-white/[0.10]'
+  })()
 
   function saveEdit() {
     const rounded = Math.max(5, Math.round(editDuration / 5) * 5)
@@ -101,22 +139,10 @@ function SortableTodoItem({
     <div
       ref={setNodeRef}
       style={style}
-      className={`group flex items-center gap-2 px-3 py-2.5 rounded-xl border transition-all duration-200 ${
-        isPriority
-          ? 'bg-[#0a0a0a] border-white/10 hover:border-white/20 hover:translate-x-1'
-          : 'bg-[#0a0a0a] border-[#1a1a1a] hover:border-[#333] hover:translate-x-1'
-      } ${isDragging ? 'shadow-lg shadow-white/5 z-10' : ''}`}
+      className={`group flex items-center gap-2 px-3 py-2.5 rounded-xl border transition-all duration-200 animate-enter hover:translate-x-1 ${cardBg} ${isDragging ? 'shadow-lg shadow-[#FF3300]/5 z-10' : ''}`}
     >
-      {/* Priority badge or bullet */}
-      {isPriority ? (
-        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-white text-black text-xs font-bold flex items-center justify-center">
-          {index + 1}
-        </span>
-      ) : (
-        <span className="flex-shrink-0 w-6 h-6 flex items-center justify-center text-[#444]">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#444]" />
-        </span>
-      )}
+      {/* Priority badge */}
+      {badgeEl}
 
       {/* Drag handle */}
       <button
@@ -143,7 +169,7 @@ function SortableTodoItem({
               if (e.key === 'Enter') saveEdit()
               if (e.key === 'Escape') setIsEditing(false)
             }}
-            className="flex-1 min-w-0 px-2 py-1 text-sm rounded bg-[#111] border border-[#333] text-white focus:outline-none focus:border-white/30"
+            className="flex-1 min-w-0 px-2 py-1 text-sm rounded bg-[#111] border border-[#333] text-white focus:outline-none focus:border-[#FF3300]/40"
             autoFocus
           />
           <button
@@ -209,7 +235,7 @@ export default function TodoList({ todos, onAddTodo, onUpdateTodo, onDeleteTodo 
   return (
     <div className="flex flex-col h-full">
       {/* Add task card */}
-      <div className="bg-[#0a0a0a] rounded-xl border border-[#1a1a1a] p-3 mb-4">
+      <div className="bg-[#0a0a0a] rounded-xl border border-white/[0.06] p-3 mb-4">
         <input
           value={newTask}
           onChange={(e) => setNewTask(e.target.value)}
@@ -217,12 +243,12 @@ export default function TodoList({ todos, onAddTodo, onUpdateTodo, onDeleteTodo 
           placeholder="Add a task..."
           className="w-full px-1 py-1.5 text-sm bg-transparent text-white focus:outline-none placeholder-[#444]"
         />
-        <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#1a1a1a]">
+        <div className="flex items-center justify-between mt-2 pt-2 border-t border-white/[0.06]">
           <DurationStepper value={newDuration} onChange={setNewDuration} />
           <button
             onClick={handleAdd}
             disabled={!newTask.trim()}
-            className="px-4 py-1.5 rounded-full bg-white text-black text-sm font-semibold hover:bg-white/90 hover:scale-105 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+            className="px-4 py-1.5 rounded-full bg-[#FF3300] text-white text-sm font-semibold hover:bg-[#FF3300]/90 hover:scale-105 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
           >
             Add
           </button>

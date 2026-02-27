@@ -38,7 +38,7 @@ function DroppableSlot({ id, style }: { id: string; style: React.CSSProperties }
     <div
       ref={setNodeRef}
       style={style}
-      className={`absolute transition-colors ${isOver ? 'bg-white/5' : ''}`}
+      className={`absolute transition-colors ${isOver ? 'bg-[#FF3300]/[0.08] border border-dashed border-[#FF3300]/30 rounded-md' : ''}`}
     />
   )
 }
@@ -126,11 +126,11 @@ function DayColumn({
   const dayLabel = date.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })
 
   return (
-    <div className={`flex-1 relative ${isMultiDay ? 'border-r border-[#1a1a1a] last:border-r-0' : ''}`}>
+    <div className={`flex-1 relative ${isMultiDay ? 'border-r border-white/[0.06] last:border-r-0' : ''}`}>
       {/* Day header for multi-day view */}
       {isMultiDay && (
-        <div className={`sticky top-0 z-30 px-2 py-2 text-center text-xs font-medium border-b border-[#1a1a1a] ${
-          isToday ? 'text-white bg-white/5' : 'text-[#666] bg-[#0a0a0a]'
+        <div className={`sticky top-0 z-30 px-2 py-2 text-center text-xs font-medium border-b border-white/[0.06] ${
+          isToday ? 'text-[#FF3300] bg-[#FF3300]/[0.06]' : 'text-[#666] bg-[#0a0a0a]'
         }`}>
           {dayLabel}
         </div>
@@ -140,7 +140,7 @@ function DayColumn({
       {hours.map((hour) => (
         <div
           key={hour}
-          className="absolute left-0 right-0 border-t border-[#1a1a1a]"
+          className="absolute left-0 right-0 border-t border-white/[0.04]"
           style={{ top: (hour - START_HOUR) * HOUR_HEIGHT }}
         />
       ))}
@@ -167,6 +167,7 @@ function DayColumn({
         const pos = getEventStyle(event)
         const isBeingDragged = dragState?.eventId === event.id
         const completed = event.completed ?? false
+        const color = event.color || '#FF3300'
 
         return (
           <div
@@ -183,8 +184,8 @@ function DayColumn({
               height: pos.height,
               left: isMultiDay ? 4 : 52,
               right: 4,
-              backgroundColor: event.color + '18',
-              borderLeft: `3px solid ${event.color}`,
+              background: `linear-gradient(135deg, ${color}20 0%, ${color}0D 100%)`,
+              borderLeft: `3px solid ${color}`,
               minHeight: 24,
               willChange: isBeingDragged ? 'transform' : undefined,
             }}
@@ -205,7 +206,7 @@ function DayColumn({
                       title={completed ? 'Mark incomplete' : 'Mark done'}
                       className={`w-7 h-7 rounded-md flex items-center justify-center transition-all cursor-pointer ${
                         completed
-                          ? 'bg-white/20 text-white !opacity-100'
+                          ? 'bg-[#FF3300]/20 text-[#FF3300] !opacity-100'
                           : 'hover:bg-white/10 text-[#888] hover:text-white'
                       }`}
                     >
@@ -242,7 +243,7 @@ function DayColumn({
                     </button>
                   </div>
                 )}
-                <p className={`text-xs font-medium truncate leading-tight ${completed ? 'line-through text-[#555]' : 'text-[#ddd]'}`}>
+                <p className={`text-xs font-medium truncate leading-tight ${completed ? 'line-through text-[#555]' : 'text-white'}`}>
                   {event.title}
                 </p>
               </div>
@@ -393,7 +394,7 @@ export default function CalendarView({
   return (
     <div
       ref={containerRef}
-      className="flex-1 overflow-y-auto min-h-0 bg-[#0a0a0a] rounded-xl border border-[#1a1a1a]"
+      className="flex-1 overflow-y-auto min-h-0 bg-[#0a0a0a] rounded-xl border border-white/[0.06]"
     >
       <div className="flex" style={{ minHeight: (END_HOUR - START_HOUR) * HOUR_HEIGHT }}>
         {/* Time labels column */}

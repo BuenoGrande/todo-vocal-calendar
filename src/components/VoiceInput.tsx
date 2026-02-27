@@ -65,10 +65,10 @@ export default function VoiceInput({ onTranscription }: VoiceInputProps) {
       title={isRecording ? 'Stop recording' : 'Start recording'}
       className={`relative w-11 h-11 rounded-full flex items-center justify-center transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
         isRecording
-          ? 'bg-red-500 text-white recording-pulse'
+          ? 'bg-[#FF3300] text-white recording-pulse'
           : isProcessing
-            ? 'bg-white/60 text-black animate-pulse'
-            : 'bg-white text-black hover:bg-white/90 hover:scale-105'
+            ? 'bg-[#1c1c1c] border border-[#FF3300]/30 text-[#FF3300] animate-pulse'
+            : 'bg-white text-black hover:bg-white/90 hover:scale-105 hover:shadow-[0_0_16px_rgba(255,51,0,0.2)]'
       }`}
     >
       {isProcessing ? (
