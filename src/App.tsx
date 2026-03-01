@@ -921,7 +921,7 @@ export default function App() {
         <main className="flex-1 flex overflow-hidden relative z-10">
           {/* Task lists panel */}
           <div className="w-[40%] xl:w-[35%] h-full shrink-0 overflow-y-auto border-r border-border bg-surface">
-            <div className="p-4 flex flex-col gap-4">
+            <div className="p-4 grid grid-cols-2 gap-4">
               {lists.map((list) => {
                 const listTodos = todos.filter((t) => t.listName === list.name)
                 return (
@@ -949,7 +949,7 @@ export default function App() {
 
               {/* Add list button */}
               {addingList ? (
-                <div className="flex gap-2">
+                <div className="col-span-2 flex gap-2">
                   <input
                     value={newListName}
                     onChange={(e) => setNewListName(e.target.value)}
@@ -983,7 +983,7 @@ export default function App() {
               ) : (
                 <button
                   onClick={() => setAddingList(true)}
-                  className="flex items-center justify-center gap-2 py-2.5 text-sm font-medium text-secondary hover:text-primary border border-dashed border-border hover:border-accent/50 rounded-lg transition-colors cursor-pointer"
+                  className="col-span-2 flex items-center justify-center gap-2 py-2.5 text-sm font-medium text-secondary hover:text-primary border border-dashed border-border hover:border-accent/50 rounded-lg transition-colors cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
                   Add List
