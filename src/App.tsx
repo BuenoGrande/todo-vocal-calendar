@@ -8,6 +8,7 @@ import {
   DragOverlay,
 } from '@dnd-kit/core'
 import { arrayMove } from '@dnd-kit/sortable'
+import { motion, AnimatePresence } from 'framer-motion'
 import type { TodoItem, CalendarEvent, ViewMode } from './types'
 import { parseTasks } from './services/llm'
 import { scheduleLocally } from './services/localScheduler'
@@ -32,32 +33,36 @@ import {
   fetchRecentStats,
 } from './services/database'
 import { useAuth } from './contexts/AuthContext'
-import GoogleCalendarButton from './components/GoogleCalendarButton'
-import VoiceInput from './components/VoiceInput'
+import TopBar from './components/TopBar'
 import TodoList from './components/TodoList'
 import CalendarView from './components/CalendarView'
 import DayNavigation from './components/DayNavigation'
-import CompletionCounter from './components/CompletionCounter'
 import LoginScreen from './components/LoginScreen'
-import AnimatedBackground from './components/AnimatedBackground'
+import VoiceInputModal from './components/VoiceInputModal'
+import TaskCard from './components/TaskCard'
+import Achievements from './components/Achievements'
+import type { Achievement } from './components/Achievements'
+import DailyGoals from './components/DailyGoals'
+import type { DailyObjective } from './components/DailyGoals'
+import LevelUpCelebration from './components/LevelUpCelebration'
+import ParticleTrail from './components/ParticleTrail'
 
 const GOOGLE_EVENT_COLOR = '#4A90D9'
+const XP_PER_TASK = 25
+const XP_PER_LEVEL = 100
 
 /** Priority-based color: index 0 (most urgent) = vivid red, last = muted grey */
 function getPriorityColor(index: number, total: number): string {
-  if (total <= 1) return '#FF3300'
-  const t = index / (total - 1) // 0..1
+  if (total <= 1) return '#EF4444'
+  const t = index / (total - 1)
   if (t <= 0.6) {
-    // First 60%: hue 12→40, full saturation, bright
-    const hue = 12 + (t / 0.6) * 28
-    return `hsl(${hue}, 100%, 50%)`
+    const hue = 0 + (t / 0.6) * 40
+    return `hsl(${hue}, 90%, 55%)`
   }
-  // Last 40%: desaturate towards grey, darken slightly
-  const u = (t - 0.6) / 0.4 // 0..1 within this range
-  const hue = 40
-  const sat = 100 - u * 90  // 100→10
-  const lit = 50 - u * 20   // 50→30
-  return `hsl(${hue}, ${sat}%, ${lit}%)`
+  const u = (t - 0.6) / 0.4
+  const sat = 90 - u * 70
+  const lit = 55 - u * 20
+  return `hsl(40, ${sat}%, ${lit}%)`
 }
 
 function dateToString(date: Date): string {
@@ -67,7 +72,6 @@ function dateToString(date: Date): string {
 function computeStreak(stats: { date: string; tasksCompleted: number }[]): number {
   const completedDates = new Set(stats.filter((s) => s.tasksCompleted > 0).map((s) => s.date))
   let streak = 0
-  // Start from yesterday, count consecutive days backwards
   for (let i = 1; i <= 7; i++) {
     const d = new Date()
     d.setDate(d.getDate() - i)
@@ -81,12 +85,21 @@ function computeStreak(stats: { date: string; tasksCompleted: number }[]): numbe
   return streak
 }
 
+const INITIAL_ACHIEVEMENTS: Achievement[] = [
+  { id: 'a1', name: 'First Win', description: 'Complete your first task.', icon: 'CheckCircle', unlocked: false, category: 'Productivity' },
+  { id: 'a2', name: 'Week Warrior', description: 'Maintain a 7-day streak.', icon: 'Flame', unlocked: false, category: 'Consistency' },
+  { id: 'a3', name: 'Power Planner', description: 'Complete 50 tasks.', icon: 'Target', unlocked: false, category: 'Mastery' },
+  { id: 'a4', name: 'Early Bird', description: 'Plan your day before 8 AM.', icon: 'Sunrise', unlocked: false, category: 'Consistency' },
+  { id: 'a5', name: 'Unstoppable', description: 'Complete 5 Critical tasks in a day.', icon: 'Zap', unlocked: false, category: 'Mastery' },
+]
+
 export default function App() {
   const { user, googleToken, loading, signInWithGoogle } = useAuth()
   const [todos, setTodos] = useState<TodoItem[]>([])
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([])
   const [isScheduling, setIsScheduling] = useState(false)
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
+  const [dragPosition, setDragPosition] = useState({ x: 0, y: 0 })
   const [toast, setToast] = useState<string | null>(null)
   const [viewDate, setViewDate] = useState(new Date())
   const [viewMode, setViewMode] = useState<ViewMode>('1-day')
@@ -99,6 +112,24 @@ export default function App() {
     freeFrom: Date
     duration: number
   } | null>(null)
+
+  // New UI state
+  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false)
+  const [isAchievementsOpen, setIsAchievementsOpen] = useState(false)
+  const [isGoalsOpen, setIsGoalsOpen] = useState(false)
+  const [showLevelUp, setShowLevelUp] = useState(false)
+  const [achievements, setAchievements] = useState<Achievement[]>(INITIAL_ACHIEVEMENTS)
+
+  // Gamification derived state
+  const xp = completedToday * XP_PER_TASK
+  const level = Math.floor(xp / XP_PER_LEVEL) + 1
+  const xpInLevel = xp % XP_PER_LEVEL
+
+  const dailyObjectives: DailyObjective[] = [
+    { id: 'o1', name: 'Complete 3 tasks', progress: Math.min(completedToday, 3), target: 3, completed: completedToday >= 3 },
+    { id: 'o2', name: 'Schedule all tasks', progress: todos.length === 0 ? 1 : 0, target: 1, completed: todos.length === 0 },
+    { id: 'o3', name: 'Maintain streak', progress: streak > 0 ? 1 : 0, target: 1, completed: streak > 0 },
+  ]
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -126,6 +157,15 @@ export default function App() {
         setCompletedToday(stats.tasksCompleted)
         setStreak(computeStreak(recentStats))
         setDataLoaded(true)
+
+        // Unlock achievements based on data
+        if (stats.tasksCompleted > 0) {
+          setAchievements((prev) => prev.map((a) => a.id === 'a1' ? { ...a, unlocked: true } : a))
+        }
+        const s = computeStreak(recentStats)
+        if (s >= 7) {
+          setAchievements((prev) => prev.map((a) => a.id === 'a2' ? { ...a, unlocked: true } : a))
+        }
       } catch (err) {
         console.error('Failed to load data:', err)
       }
@@ -151,7 +191,6 @@ export default function App() {
         const events = await fetchEvents(dateToString(start), dateToString(end))
         if (cancelled) return
         setCalendarEvents((prev) => {
-          // Keep Google-origin events, but skip ones that duplicate app-created events
           const googleEvents = prev.filter((e) => e.isGoogleEvent)
           const dbGoogleIds = new Set(
             events.filter((e) => e.googleEventId).map((e) => e.googleEventId),
@@ -199,7 +238,6 @@ export default function App() {
         )
         setCalendarEvents((prev) => {
           const nonGoogle = prev.filter((e) => !e.isGoogleEvent)
-          // Dedup: skip Google events that already exist as app-created events
           const appGoogleIds = new Set(
             nonGoogle.filter((e) => e.googleEventId).map((e) => e.googleEventId),
           )
@@ -208,7 +246,6 @@ export default function App() {
         })
       } catch (err: unknown) {
         console.error('Failed to fetch Google Calendar events:', err)
-        // If token expired, clear it so user can reconnect
         if (err instanceof Error && (err.message.includes('401') || err.message.includes('Invalid Credentials'))) {
           localStorage.removeItem('shout_google_token')
           showToast('Google Calendar disconnected — sign out and back in to reconnect')
@@ -227,7 +264,6 @@ export default function App() {
     const tempId = crypto.randomUUID()
     const newTodo: TodoItem = { id: tempId, title, duration, priority }
 
-    // Optimistic update
     setTodos((prev) => [...prev, newTodo])
 
     try {
@@ -278,13 +314,11 @@ export default function App() {
           location: t.location,
         }))
 
-        // Optimistic update
         setTodos((prev) => {
           const renumbered = prev.map((t, i) => ({ ...t, priority: newTodos.length + i }))
           return [...newTodos, ...renumbered]
         })
 
-        // Persist to Supabase
         const createdTodos: TodoItem[] = []
         for (const todo of newTodos) {
           try {
@@ -299,7 +333,6 @@ export default function App() {
           }
         }
 
-        // Replace temp IDs with real ones
         setTodos((prev) => {
           let updated = [...prev]
           for (let i = 0; i < newTodos.length; i++) {
@@ -307,7 +340,6 @@ export default function App() {
               updated = updated.map((t) => (t.id === newTodos[i].id ? createdTodos[i] : t))
             }
           }
-          // Reorder existing tasks in DB
           const existing = updated.filter((t) => !newTodos.some((n) => n.id === t.id))
           reorderTasks(existing.map((t, i) => ({ id: t.id, priority: newTodos.length + i }))).catch(console.error)
           return updated
@@ -322,13 +354,12 @@ export default function App() {
     [user],
   )
 
-  // Schedule all tasks instantly using local algorithm (no AI call needed)
+  // Schedule all tasks
   async function handleAISchedule() {
     if (todos.length === 0 || !user) return
     setIsScheduling(true)
     const t0 = performance.now()
 
-    // Local scheduler is instant — no OpenAI API call needed
     const schedule = scheduleLocally(todos, calendarEvents, viewDate)
     console.log(`[SHOUT] Local scheduling: ${(performance.now() - t0).toFixed(0)}ms`)
 
@@ -338,7 +369,6 @@ export default function App() {
       return
     }
 
-    // Build event data
     const eventDataList = schedule.map((item, i) => {
       const todo = todos.find((t) => t.id === item.todoId)!
       const [hours, minutes] = item.startTime.split(':').map(Number)
@@ -348,7 +378,6 @@ export default function App() {
       return { todo, start, end, color: getPriorityColor(i, schedule.length), dateStr: dateToString(start) }
     })
 
-    // Optimistic UI: show events immediately, remove tasks
     const scheduledTodoIds = eventDataList.map(({ todo }) => todo.id)
     const optimisticEvents: CalendarEvent[] = eventDataList.map(({ todo, start, end, color, dateStr }) => ({
       id: `placeholder-${crypto.randomUUID()}`,
@@ -365,7 +394,6 @@ export default function App() {
     try {
       const t1 = performance.now()
 
-      // Create Google + DB events in parallel
       const [googleIds, createdEvents] = await Promise.all([
         Promise.all(
           eventDataList.map(({ todo, start, end }) => {
@@ -383,7 +411,6 @@ export default function App() {
       ])
       console.log(`[SHOUT] Create events: ${(performance.now() - t1).toFixed(0)}ms`)
 
-      // Link Google IDs to DB events (fire and forget)
       googleIds.forEach((gId, i) => {
         if (gId && createdEvents[i]) {
           updateEvent(createdEvents[i].id, { googleEventId: gId }).catch(console.error)
@@ -391,11 +418,9 @@ export default function App() {
       })
 
       const t2 = performance.now()
-      // Delete tasks in parallel
       await Promise.all(scheduledTodoIds.map((id) => deleteTask(id).catch(console.error)))
       console.log(`[SHOUT] Delete tasks: ${(performance.now() - t2).toFixed(0)}ms`)
 
-      // Replace placeholders with real DB events
       setCalendarEvents((prev) => {
         const withoutPlaceholders = prev.filter((e) => !e.id.startsWith('placeholder-'))
         return [...withoutPlaceholders, ...createdEvents]
@@ -420,7 +445,6 @@ export default function App() {
       setCalendarEvents((prev) =>
         prev.map((e) => (e.id === id ? { ...e, ...updates } : e)),
       )
-      // Skip DB update for placeholder events
       if (id.startsWith('placeholder-')) return
       try {
         await updateEvent(id, updates)
@@ -431,7 +455,7 @@ export default function App() {
     [],
   )
 
-  // Complete event — shrink to actual time spent, suggest next task
+  // Complete event
   const handleComplete = useCallback(
     async (event: CalendarEvent) => {
       if (!user) return
@@ -439,18 +463,28 @@ export default function App() {
       const now = new Date()
 
       if (newCompleted) {
-        // Shrink event end to now (actual time spent)
         const actualEnd = now < event.end ? now : event.end
         setCalendarEvents((prev) =>
           prev.map((e) => (e.id === event.id ? { ...e, completed: true, end: actualEnd } : e)),
         )
-        setCompletedToday((c) => c + 1)
+        const newCount = completedToday + 1
+        setCompletedToday(newCount)
+
+        // Check for level-up
+        const prevLevel = Math.floor((completedToday * XP_PER_TASK) / XP_PER_LEVEL) + 1
+        const newLevel = Math.floor((newCount * XP_PER_TASK) / XP_PER_LEVEL) + 1
+        if (newLevel > prevLevel) {
+          setShowLevelUp(true)
+        }
+
+        // Unlock first win achievement
+        setAchievements((prev) => prev.map((a) => a.id === 'a1' ? { ...a, unlocked: true } : a))
+
         await Promise.all([
           incrementCompletionStats(user.id, dateToString(new Date()), 'tasks_completed'),
           updateEvent(event.id, { completed: true, end: actualEnd }),
         ])
 
-        // If backlog tasks exist, suggest scheduling the next one
         if (todos.length > 0) {
           const nextTask = todos[0]
           setNextTaskSuggestion({
@@ -461,7 +495,6 @@ export default function App() {
           })
         }
       } else {
-        // Uncomplete
         setCalendarEvents((prev) =>
           prev.map((e) => (e.id === event.id ? { ...e, completed: false } : e)),
         )
@@ -472,17 +505,16 @@ export default function App() {
         }
       }
     },
-    [user, todos],
+    [user, todos, completedToday],
   )
 
-  // Schedule the suggested next task into freed time
+  // Schedule the suggested next task
   async function handleScheduleNextTask() {
     if (!nextTaskSuggestion || !user) return
     const task = todos.find((t) => t.id === nextTaskSuggestion.taskId)
     if (!task) { setNextTaskSuggestion(null); return }
 
     const start = new Date(nextTaskSuggestion.freeFrom)
-    // Round up to next 5 minutes
     start.setMinutes(Math.ceil(start.getMinutes() / 5) * 5, 0, 0)
     const end = new Date(start.getTime() + task.duration * 60000)
     const todoIndex = todos.findIndex((t) => t.id === task.id)
@@ -498,7 +530,6 @@ export default function App() {
       date: dateStr,
     }
 
-    // Create event + Google Calendar in parallel
     const [created, googleId] = await Promise.all([
       createEvent(eventData, user.id),
       googleToken
@@ -544,7 +575,6 @@ export default function App() {
   const handleReschedule = useCallback(
     async (event: CalendarEvent) => {
       if (!user) return
-      // Delete from Google Calendar if synced
       if (event.googleEventId && googleToken && !event.isGoogleEvent) {
         try {
           await deleteGoogleEvent(googleToken, event.googleEventId)
@@ -552,11 +582,9 @@ export default function App() {
           console.error('Failed to delete Google event:', err)
         }
       }
-      // Remove from calendar
       setCalendarEvents((prev) => prev.filter((e) => e.id !== event.id))
       await deleteEvent(event.id).catch(console.error)
 
-      // Create new todo
       const duration = Math.round((event.end.getTime() - event.start.getTime()) / 60000)
       const priority = todos.length
       const created = await createTask({ title: event.title, duration, priority }, user.id)
@@ -566,7 +594,7 @@ export default function App() {
     [googleToken, todos.length, user],
   )
 
-  // Clear all events (non-Google)
+  // Clear all events
   async function handleClearAllEvents() {
     const nonGoogleEvents = calendarEvents.filter((e) => !e.isGoogleEvent)
     if (nonGoogleEvents.length === 0) return
@@ -587,6 +615,11 @@ export default function App() {
     setActiveDragId(String(event.active.id))
   }
 
+  function handleDragMove(event: { delta: { x: number; y: number }; activatorEvent: Event }) {
+    const e = event.activatorEvent as MouseEvent
+    setDragPosition({ x: e.clientX + event.delta.x, y: e.clientY + event.delta.y })
+  }
+
   async function handleDragEnd(event: DragEndEvent) {
     setActiveDragId(null)
     const { active, over } = event
@@ -596,13 +629,12 @@ export default function App() {
     const overId = String(over.id)
 
     if (overId.startsWith('day-target-')) {
-      // Dropped on a day target zone (Tomorrow, +2, +3)
       const todo = todos.find((t) => t.id === activeId)
       if (!todo) return
 
       const targetDateStr = overId.replace('day-target-', '')
       const [year, month, day] = targetDateStr.split('-').map(Number)
-      const start = new Date(year, month - 1, day, 9, 0, 0, 0) // Default 9:00 AM
+      const start = new Date(year, month - 1, day, 9, 0, 0, 0)
       const end = new Date(start.getTime() + todo.duration * 60000)
       const todoIndex = todos.findIndex((t) => t.id === todo.id)
       const color = getPriorityColor(todoIndex >= 0 ? todoIndex : 0, todos.length)
@@ -616,7 +648,6 @@ export default function App() {
         date: targetDateStr,
       }
 
-      // Create in Google Calendar if connected
       if (googleToken) {
         createGoogleEvent(googleToken, { title: todo.title, start, end })
           .then((googleId) => {
@@ -642,11 +673,9 @@ export default function App() {
       const dayLabel = new Date(year, month - 1, day).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
       showToast(`Task scheduled for ${dayLabel}`)
     } else if (overId.startsWith('slot-')) {
-      // Dropped on calendar slot — parse date and time from slot id
       const todo = todos.find((t) => t.id === activeId)
       if (!todo) return
 
-      // slot id format: slot-YYYY-MM-DD-HH:MM or slot-HH:MM (single day)
       let dateStr: string
       let timeStr: string
 
@@ -676,7 +705,6 @@ export default function App() {
         date: dateStr,
       }
 
-      // Create in Google Calendar if connected
       if (googleToken) {
         createGoogleEvent(googleToken, { title: todo.title, start, end })
           .then((googleId) => {
@@ -688,27 +716,23 @@ export default function App() {
           .catch((err) => console.error('Failed to create Google event:', err))
       }
 
-      // Persist to Supabase
       try {
         const created = await createEvent(eventData, user.id)
         setCalendarEvents((prev) => [...prev, created])
       } catch (err) {
         console.error('Failed to create event:', err)
-        // Fallback: add optimistic
         setCalendarEvents((prev) => [...prev, { id: crypto.randomUUID(), ...eventData }])
       }
 
       setTodos((prev) => prev.filter((t) => t.id !== activeId))
       await deleteTask(activeId).catch(console.error)
     } else {
-      // Reorder within todo list
       if (activeId !== overId) {
         setTodos((prev) => {
           const oldIndex = prev.findIndex((t) => t.id === activeId)
           const newIndex = prev.findIndex((t) => t.id === overId)
           if (oldIndex === -1 || newIndex === -1) return prev
           const reordered = arrayMove(prev, oldIndex, newIndex)
-          // Persist priority order
           reorderTasks(reordered.map((t, i) => ({ id: t.id, priority: i }))).catch(console.error)
           return reordered
         })
@@ -735,7 +759,6 @@ export default function App() {
     [googleToken, calendarEvents],
   )
 
-  // Listen for mouseup to sync calendar events after drag/resize
   useEffect(() => {
     function handleGlobalMouseUp() {
       calendarEvents
@@ -746,19 +769,17 @@ export default function App() {
     return () => document.removeEventListener('mouseup', handleGlobalMouseUp)
   }, [calendarEvents, syncEventToGoogle])
 
-  // Milestone callback for toast
-  const handleMilestone = useCallback((message: string) => {
-    showToast(message)
-  }, [])
-
   const activeTodo = activeDragId ? todos.find((t) => t.id === activeDragId) : null
 
   // Loading state
   if (loading) {
     return (
-      <div className="h-screen w-screen bg-[#0d0d0d] flex items-center justify-center">
-        <div className="text-white text-2xl font-black animate-pulse">
-          <span className="text-[#FF3300]">S</span>HOUT
+      <div className="h-screen w-screen bg-deep flex items-center justify-center">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded bg-accent flex items-center justify-center" style={{ boxShadow: '0 0 15px -3px rgba(139,92,246,0.4)' }}>
+            <span className="font-bold text-white text-lg leading-none">S</span>
+          </div>
+          <span className="text-primary text-2xl font-bold animate-pulse">SHOUT</span>
         </div>
       </div>
     )
@@ -773,135 +794,151 @@ export default function App() {
     <DndContext
       sensors={sensors}
       onDragStart={handleDragStart}
+      onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
     >
-      <div className="h-screen flex flex-col bg-[#0d0d0d] font-sans relative">
-        <AnimatedBackground />
+      <div className="h-screen w-full flex flex-col bg-deep text-primary overflow-hidden">
+        <TopBar
+          level={level}
+          xp={xpInLevel}
+          xpToNextLevel={XP_PER_LEVEL}
+          streak={streak}
+          onNewTask={() => setIsVoiceModalOpen(true)}
+          onOpenAchievements={() => setIsAchievementsOpen(true)}
+          onToggleGoals={() => setIsGoalsOpen(!isGoalsOpen)}
+        />
 
-        {/* Header */}
-        <header className="relative z-10 flex items-center justify-between px-5 py-3 border-b border-white/[0.06]">
-          <div className="flex items-center gap-3">
-            <h1 className="text-lg font-black text-white tracking-tight">
-              <span className="text-[#FF3300]">SH</span><span className="text-white/60">OU</span>T
-            </h1>
-          </div>
+        <div className="relative z-40">
+          <DailyGoals isOpen={isGoalsOpen} objectives={dailyObjectives} />
+        </div>
 
-          <div className="flex items-center gap-4">
-            <CompletionCounter count={completedToday} streak={streak} onMilestone={handleMilestone} />
-            <GoogleCalendarButton />
-          </div>
-        </header>
-
-        {/* Main content */}
-        <div className="relative z-10 flex flex-1 overflow-hidden">
-          {/* Todo panel */}
-          <div className="w-[420px] flex-shrink-0 p-4 border-r border-white/[0.06]">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-base font-semibold text-white">Tasks</h2>
-              <span className="text-xs text-[#555] font-medium">
-                {todos.length} {todos.length === 1 ? 'task' : 'tasks'}
-              </span>
-            </div>
-
-            {/* Voice input + AI Schedule */}
-            <div className="flex items-center gap-2 mb-4">
-              <VoiceInput onTranscription={handleTranscription} />
-              <button
-                onClick={handleAISchedule}
-                disabled={todos.length === 0 || isScheduling}
-                title="AI auto-schedule all tasks"
-                className="flex-1 h-9 px-3 rounded-lg bg-[#FF3300] text-white text-sm font-semibold hover:bg-[#FF3300]/90 hover:scale-[1.02] disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                {isScheduling ? (
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                ) : (
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                )}
-                AI Schedule
-              </button>
-            </div>
-
+        <main className="flex-1 flex overflow-hidden relative z-10">
+          {/* Task backlog panel */}
+          <div className="w-[40%] xl:w-[35%] h-full shrink-0">
             <TodoList
               todos={todos}
               onAddTodo={handleAddTodo}
               onUpdateTodo={handleUpdateTodo}
               onDeleteTodo={handleDeleteTodo}
+              onAutoSchedule={handleAISchedule}
+              isScheduling={isScheduling}
             />
           </div>
 
-          {/* Calendar panel */}
-          <div className="flex-1 p-4 overflow-hidden flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-              <div className="flex-1">
-                <DayNavigation
-                  viewDate={viewDate}
-                  viewMode={viewMode}
-                  onDateChange={setViewDate}
-                  onViewModeChange={setViewMode}
-                />
+          {/* Schedule panel */}
+          <div className="w-[60%] xl:w-[65%] h-full shrink-0 flex flex-col">
+            <div className="px-6 pt-4 pb-2">
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  <DayNavigation
+                    viewDate={viewDate}
+                    viewMode={viewMode}
+                    onDateChange={setViewDate}
+                    onViewModeChange={setViewMode}
+                  />
+                </div>
+                {calendarEvents.some((e) => !e.isGoogleEvent) && (
+                  <button
+                    onClick={handleClearAllEvents}
+                    className="px-3 py-1.5 text-xs font-medium text-critical border border-critical/20 rounded-md hover:bg-critical/10 transition-all cursor-pointer"
+                  >
+                    Clear all
+                  </button>
+                )}
               </div>
-              {calendarEvents.some((e) => !e.isGoogleEvent) && (
-                <button
-                  onClick={handleClearAllEvents}
-                  className="px-3 py-1.5 text-xs font-medium text-red-400 border border-red-400/20 rounded-lg hover:bg-red-400/10 transition-all cursor-pointer"
-                >
-                  Clear all
-                </button>
-              )}
             </div>
-            <CalendarView
-              events={calendarEvents}
-              viewDate={viewDate}
-              viewMode={viewMode}
-              onEventUpdate={handleEventUpdate}
-              onEventDelete={handleEventDelete}
-              onReschedule={handleReschedule}
-              onComplete={handleComplete}
-              isTaskDragging={!!activeDragId}
-            />
+            <div className="flex-1 overflow-hidden">
+              <CalendarView
+                events={calendarEvents}
+                viewDate={viewDate}
+                viewMode={viewMode}
+                onEventUpdate={handleEventUpdate}
+                onEventDelete={handleEventDelete}
+                onReschedule={handleReschedule}
+                onComplete={handleComplete}
+                isTaskDragging={!!activeDragId}
+              />
+            </div>
           </div>
-        </div>
+        </main>
 
         {/* Next task suggestion */}
-        {nextTaskSuggestion && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 bg-[#141414] text-white text-sm rounded-xl border border-[#FF3300]/20 shadow-lg shadow-[#FF3300]/5 animate-[fadeIn_0.2s_ease-out] flex items-center gap-3">
-            <span>Finished early! Schedule <strong>{nextTaskSuggestion.taskName}</strong>?</span>
-            <button
-              onClick={handleScheduleNextTask}
-              className="px-3 py-1.5 bg-[#FF3300] text-white text-xs font-semibold rounded-lg hover:bg-[#FF3300]/90 transition-all cursor-pointer"
+        <AnimatePresence>
+          {nextTaskSuggestion && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 bg-surface text-primary text-sm rounded-xl border border-accent/20 shadow-lg flex items-center gap-3"
             >
-              Schedule now
-            </button>
-            <button
-              onClick={() => setNextTaskSuggestion(null)}
-              className="px-3 py-1.5 text-xs text-[#888] hover:text-white transition-all cursor-pointer"
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
+              <span>Finished early! Schedule <strong>{nextTaskSuggestion.taskName}</strong>?</span>
+              <button
+                onClick={handleScheduleNextTask}
+                className="px-3 py-1.5 bg-accent text-white text-xs font-semibold rounded-md hover:bg-accent-glow transition-all cursor-pointer"
+              >
+                Schedule now
+              </button>
+              <button
+                onClick={() => setNextTaskSuggestion(null)}
+                className="px-3 py-1.5 text-xs text-dim hover:text-primary transition-all cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Toast */}
-        {toast && !nextTaskSuggestion && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 bg-[#141414] text-white text-sm rounded-xl border border-[#FF3300]/20 shadow-lg shadow-[#FF3300]/5 animate-[fadeIn_0.2s_ease-out]">
-            {toast}
-          </div>
-        )}
+        <AnimatePresence>
+          {toast && !nextTaskSuggestion && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 bg-surface text-primary text-sm rounded-xl border border-border shadow-lg"
+            >
+              {toast}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Drag overlay */}
         <DragOverlay>
           {activeTodo ? (
-            <div className="px-4 py-2.5 bg-[#141414] rounded-xl border border-[#FF3300]/20 shadow-xl shadow-[#FF3300]/10 text-sm text-white font-medium max-w-[300px] truncate">
-              {activeTodo.title}
-              <span className="ml-2 text-xs text-[#888]">{activeTodo.duration}m</span>
+            <div className="w-80">
+              <TaskCard
+                todo={activeTodo}
+                rank={todos.findIndex((t) => t.id === activeTodo.id) + 1}
+              />
             </div>
           ) : null}
         </DragOverlay>
+
+        {/* Particle trail during drag */}
+        <ParticleTrail
+          x={dragPosition.x}
+          y={dragPosition.y}
+          isDragging={!!activeDragId}
+        />
+
+        {/* Modals */}
+        <VoiceInputModal
+          isOpen={isVoiceModalOpen}
+          onClose={() => setIsVoiceModalOpen(false)}
+          onTranscription={handleTranscription}
+        />
+
+        <Achievements
+          isOpen={isAchievementsOpen}
+          onClose={() => setIsAchievementsOpen(false)}
+          achievements={achievements}
+        />
+
+        <LevelUpCelebration
+          isOpen={showLevelUp}
+          level={level}
+          onClose={() => setShowLevelUp(false)}
+        />
       </div>
     </DndContext>
   )

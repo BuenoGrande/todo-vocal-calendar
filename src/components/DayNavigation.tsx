@@ -1,3 +1,5 @@
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+
 interface DayNavigationProps {
   viewDate: Date
   viewMode: '1-day' | '3-day'
@@ -48,49 +50,43 @@ export default function DayNavigation({ viewDate, viewMode, onDateChange, onView
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-3">
-        {/* Navigation arrows */}
         <div className="flex items-center gap-1">
           <button
             onClick={() => navigate(-1)}
-            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#FF3300]/10 text-[#888] hover:text-[#FF3300] transition-all cursor-pointer"
+            className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-elevated text-secondary hover:text-primary transition-all cursor-pointer"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
+            <ChevronLeft className="w-4 h-4" />
           </button>
           <button
             onClick={() => navigate(1)}
-            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#FF3300]/10 text-[#888] hover:text-[#FF3300] transition-all cursor-pointer"
+            className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-elevated text-secondary hover:text-primary transition-all cursor-pointer"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
+            <ChevronRight className="w-4 h-4" />
           </button>
         </div>
 
         <div>
-          <h2 className="text-base font-semibold text-white">{formatDateLabel(viewDate)}</h2>
-          <p className="text-xs text-[#666]">{dayLabel}</p>
+          <h2 className="text-base font-semibold text-primary">{formatDateLabel(viewDate)}</h2>
+          <p className="text-xs text-dim">{dayLabel}</p>
         </div>
 
         {!isToday && (
           <button
             onClick={goToToday}
-            className="px-3 py-1 text-xs font-medium text-[#FF3300] border border-[#FF3300]/30 rounded-lg hover:bg-[#FF3300]/10 transition-all cursor-pointer"
+            className="px-3 py-1 text-xs font-medium text-accent border border-accent/30 rounded-md hover:bg-accent/10 transition-all cursor-pointer"
           >
             Today
           </button>
         )}
       </div>
 
-      {/* View mode toggle */}
-      <div className="flex items-center gap-1 bg-[#111] rounded-lg p-0.5 border border-white/[0.06]">
+      <div className="flex items-center gap-1 bg-elevated rounded-lg p-0.5 border border-border">
         <button
           onClick={() => onViewModeChange('1-day')}
           className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all cursor-pointer ${
             viewMode === '1-day'
-              ? 'bg-[#FF3300] text-white'
-              : 'text-[#666] hover:text-[#888]'
+              ? 'bg-accent text-white'
+              : 'text-dim hover:text-secondary'
           }`}
         >
           1 Day
@@ -99,8 +95,8 @@ export default function DayNavigation({ viewDate, viewMode, onDateChange, onView
           onClick={() => onViewModeChange('3-day')}
           className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all cursor-pointer ${
             viewMode === '3-day'
-              ? 'bg-[#FF3300] text-white'
-              : 'text-[#666] hover:text-[#888]'
+              ? 'bg-accent text-white'
+              : 'text-dim hover:text-secondary'
           }`}
         >
           3 Day

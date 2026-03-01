@@ -1,25 +1,38 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --color-accent: #FF3300;
-  --color-accent-light: #FF6633;
-  --color-accent-dark: #CC2900;
-  --color-accent-amber: #FF6B00;
-  --color-xp-gold: #FFD700;
+  --color-deep: #09090B;
+  --color-surface: #18181B;
+  --color-elevated: #27272A;
+  --color-border: #3F3F46;
+  --color-border-hover: #52525B;
+  --color-primary: #F1F5F9;
+  --color-secondary: #A1A1AA;
+  --color-dim: #71717A;
+  --color-accent: #8B5CF6;
+  --color-accent-glow: #A78BFA;
+  --color-critical: #EF4444;
+  --color-high: #F59E0B;
+  --color-medium: #3B82F6;
+  --color-low: #64748B;
+  --color-success: #10B981;
 }
 
 body {
   margin: 0;
-  background: #0d0d0d;
-  color: #ffffff;
+  background-color: #09090B;
+  color: #F1F5F9;
+  font-family: 'Inter', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #333 transparent;
+  scrollbar-color: #3F3F46 transparent;
 }
 
 *::-webkit-scrollbar {
@@ -31,8 +44,12 @@ body {
 }
 
 *::-webkit-scrollbar-thumb {
-  background-color: #333;
+  background-color: #3F3F46;
   border-radius: 3px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #52525B;
 }
 
 @keyframes pulse-ring {
@@ -45,7 +62,7 @@ body {
   position: absolute;
   inset: -4px;
   border-radius: 50%;
-  background: rgba(255, 51, 0, 0.4);
+  background: rgba(139, 92, 246, 0.4);
   animation: pulse-ring 1.2s ease-out infinite;
 }
 
@@ -59,26 +76,9 @@ body {
   animation: check-pop 0.2s ease-out;
 }
 
-@keyframes confetti {
-  0% {
-    opacity: 1;
-    transform: translateY(0) rotate(0deg) scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(-30px) rotate(360deg) scale(0);
-  }
-}
-
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
-}
-
-.shimmer {
-  background: linear-gradient(90deg, transparent 0%, rgba(255,51,0,0.12) 50%, transparent 100%);
-  background-size: 200% 100%;
-  animation: shimmer 2.5s ease-in-out infinite;
 }
 
 @keyframes fadeIn {
@@ -86,12 +86,6 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes glow {
-  0%, 100% { box-shadow: 0 0 8px rgba(255, 51, 0, 0.3); }
-  50% { box-shadow: 0 0 16px rgba(255, 51, 0, 0.5); }
-}
-
-/* New keyframes */
 @keyframes slide-up {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
@@ -99,29 +93,6 @@ body {
 
 .animate-enter {
   animation: slide-up 0.3s ease-out both;
-}
-
-@keyframes xp-fill {
-  from { width: 0%; }
-}
-
-@keyframes level-burst {
-  0% { transform: scale(1); }
-  40% { transform: scale(1.35); }
-  70% { transform: scale(0.95); }
-  100% { transform: scale(1); }
-}
-
-@keyframes flicker {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  25% { opacity: 0.85; transform: scale(1.08) rotate(-3deg); }
-  50% { opacity: 1; transform: scale(0.95) rotate(2deg); }
-  75% { opacity: 0.9; transform: scale(1.05) rotate(-1deg); }
-}
-
-@keyframes badge-breathe {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 51, 0, 0.4); }
-  50% { box-shadow: 0 0 8px 2px rgba(255, 51, 0, 0.3); }
 }
 
 @keyframes confetti-fly {
@@ -133,33 +104,4 @@ body {
     opacity: 0;
     transform: translate(var(--confetti-x, 20px), var(--confetti-y, -40px)) rotate(var(--confetti-r, 360deg)) scale(0);
   }
-}
-
-@keyframes flame-dance {
-  0%, 100% { transform: scaleY(1) scaleX(1) skewX(0deg); }
-  25% { transform: scaleY(1.06) scaleX(0.96) skewX(-2deg); }
-  50% { transform: scaleY(0.95) scaleX(1.04) skewX(1deg); }
-  75% { transform: scaleY(1.04) scaleX(0.97) skewX(-1deg); }
-}
-
-@keyframes flame-inner {
-  0%, 100% { transform: scaleY(1) scaleX(1) skewX(0deg); }
-  30% { transform: scaleY(1.08) scaleX(0.94) skewX(2deg); }
-  60% { transform: scaleY(0.93) scaleX(1.05) skewX(-2deg); }
-  80% { transform: scaleY(1.03) scaleX(0.98) skewX(1deg); }
-}
-
-@keyframes flame-core {
-  0%, 100% { transform: scale(1); opacity: 0.9; }
-  50% { transform: scale(1.08); opacity: 1; }
-}
-
-@keyframes flame-glow-pulse {
-  0%, 100% { transform: scale(1); opacity: 0.4; }
-  50% { transform: scale(1.15); opacity: 0.7; }
-}
-
-@keyframes ring-burst {
-  0% { transform: scale(0.8); opacity: 1; }
-  100% { transform: scale(2.5); opacity: 0; }
 }

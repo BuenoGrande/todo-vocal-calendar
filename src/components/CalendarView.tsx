@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useDroppable } from '@dnd-kit/core'
+import { motion } from 'framer-motion'
+import { Check, RotateCcw, X } from 'lucide-react'
 import type { CalendarEvent, ViewMode } from '../types'
 
 const HOUR_HEIGHT = 96
@@ -32,14 +34,20 @@ function dateToString(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
-function DroppableSlot({ id, style }: { id: string; style: React.CSSProperties }) {
+function DroppableSlot({ id, style, isDraggingAny }: { id: string; style: React.CSSProperties; isDraggingAny?: boolean }) {
   const { setNodeRef, isOver } = useDroppable({ id })
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`absolute transition-colors ${isOver ? 'bg-[#FF3300]/[0.08] border border-dashed border-[#FF3300]/30 rounded-md' : ''}`}
+      className={`absolute transition-all duration-200 rounded-md ${
+        isOver
+          ? 'bg-accent/10 border border-dashed border-accent/40 scale-[1.01]'
+          : isDraggingAny
+            ? 'border border-dashed border-border/50 bg-elevated/20'
+            : ''
+      }`}
     />
   )
 }
@@ -52,8 +60,8 @@ function DayTargetDropZone({ dateStr, label }: { dateStr: string; label: string 
       ref={setNodeRef}
       className={`flex-1 flex items-center justify-center px-3 py-3 rounded-lg border-2 border-dashed transition-all cursor-default ${
         isOver
-          ? 'border-[#FF3300] bg-[#FF3300]/15 text-white scale-105'
-          : 'border-white/15 bg-white/[0.04] text-white/50 hover:border-white/25 hover:text-white/70'
+          ? 'border-accent bg-accent/15 text-white scale-105'
+          : 'border-border bg-elevated/30 text-dim hover:border-border-hover hover:text-secondary'
       }`}
     >
       <span className="text-sm font-medium">{label}</span>
@@ -79,11 +87,17 @@ function CurrentTimeLine({ dayOffset }: { dayOffset?: number }) {
   return (
     <div className="absolute left-0 right-0 z-20 pointer-events-none" style={{ top }}>
       <div className="flex items-center">
-        <div className="w-2.5 h-2.5 rounded-full bg-[#FF3300] -ml-1 shadow-[0_0_8px_rgba(255,51,0,0.6)]" />
-        <div className="flex-1 h-[2px] bg-[#FF3300] shadow-[0_0_4px_rgba(255,51,0,0.4)]" />
+        <div className="w-2.5 h-2.5 rounded-full bg-accent -ml-1" style={{ boxShadow: '0 0 8px rgba(139,92,246,0.6)' }} />
+        <div className="flex-1 h-[2px] bg-accent" style={{ boxShadow: '0 0 4px rgba(139,92,246,0.4)' }} />
       </div>
     </div>
   )
+}
+
+function getPriorityColorFromEventColor(color: string): string {
+  // Map event colors to priority border classes
+  if (color === '#4A90D9') return 'border-l-medium' // Google event
+  return 'border-l-accent'
 }
 
 function DayColumn({
@@ -92,6 +106,7 @@ function DayColumn({
   dayOffset,
   isMultiDay,
   dragState,
+  isTaskDragging,
   onEventMouseDown,
   onEventUpdate,
   onEventDelete,
@@ -103,6 +118,7 @@ function DayColumn({
   dayOffset: number
   isMultiDay: boolean
   dragState: DragState | null
+  isTaskDragging?: boolean
   onEventMouseDown: (e: React.MouseEvent, eventId: string, type: 'move' | 'resize') => void
   onEventUpdate: (id: string, updates: Partial<CalendarEvent>) => void
   onEventDelete: (id: string) => void
@@ -115,13 +131,11 @@ function DayColumn({
   const hours = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i)
   const slotHeight = (SLOT_MINUTES / 60) * HOUR_HEIGHT
 
-  // Filter events for this day
   const dayEvents = events.filter((e) => {
     const eventDate = e.date || dateToString(e.start)
     return eventDate === dateStr
   })
 
-  // Generate droppable slots
   const slots: { id: string; hour: number; minute: number }[] = []
   for (let h = START_HOUR; h < END_HOUR; h++) {
     for (let m = 0; m < 60; m += SLOT_MINUTES) {
@@ -144,32 +158,30 @@ function DayColumn({
   const dayLabel = date.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })
 
   return (
-    <div className={`flex-1 relative ${isMultiDay ? 'border-r border-white/[0.06] last:border-r-0' : ''}`}>
-      {/* Day header for multi-day view */}
+    <div className={`flex-1 relative ${isMultiDay ? 'border-r border-border last:border-r-0' : ''}`}>
       {isMultiDay && (
-        <div className={`sticky top-0 z-30 px-2 py-2 text-center text-xs font-medium border-b border-white/[0.06] ${
-          isToday ? 'text-[#FF3300] bg-[#FF3300]/[0.06]' : 'text-[#666] bg-black/70'
+        <div className={`sticky top-0 z-30 px-2 py-2 text-center text-xs font-medium border-b border-border ${
+          isToday ? 'text-accent bg-accent/[0.06]' : 'text-dim bg-surface/80'
         }`}>
           {dayLabel}
         </div>
       )}
 
-      {/* Hour lines */}
       {hours.map((hour) => (
         <div
           key={hour}
-          className="absolute left-0 right-0 border-t border-white/[0.04]"
+          className="absolute left-0 right-0 border-t border-border/30"
           style={{ top: (hour - START_HOUR) * HOUR_HEIGHT }}
         />
       ))}
 
-      {/* Droppable slots */}
       {slots.map((slot) => {
         const top = ((slot.hour - START_HOUR) * 60 + slot.minute) / 60 * HOUR_HEIGHT
         return (
           <DroppableSlot
             key={slot.id}
             id={slot.id}
+            isDraggingAny={isTaskDragging}
             style={{
               top,
               height: slotHeight,
@@ -180,21 +192,21 @@ function DayColumn({
         )
       })}
 
-      {/* Events */}
       {dayEvents.map((event) => {
         const pos = getEventStyle(event)
         const isBeingDragged = dragState?.eventId === event.id
         const completed = event.completed ?? false
-        const color = event.color || '#FF3300'
+        const color = event.color || '#8B5CF6'
+        const borderClass = getPriorityColorFromEventColor(color)
 
         return (
-          <div
+          <motion.div
             key={event.id}
-            className={`group absolute rounded-lg px-3 py-1.5 select-none transition-all duration-200 ${
-              event.isGoogleEvent
-                ? 'cursor-default'
-                : 'cursor-grab active:cursor-grabbing'
-            } ${isBeingDragged ? 'shadow-lg shadow-[#FF3300]/20 z-30 ring-1 ring-[#FF3300]/40' : 'shadow-sm z-10 hover:shadow-md hover:shadow-black/20'} ${
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className={`group absolute rounded-lg select-none transition-all duration-200 border border-border border-l-4 ${borderClass} ${
+              event.isGoogleEvent ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'
+            } ${isBeingDragged ? 'shadow-xl z-30 ring-1 ring-accent/40' : 'shadow-sm z-10 hover:shadow-md'} ${
               completed ? 'opacity-40' : ''
             }`}
             style={{
@@ -202,16 +214,14 @@ function DayColumn({
               height: pos.height,
               left: isMultiDay ? 4 : 52,
               right: 4,
-              background: `linear-gradient(135deg, ${color}20 0%, ${color}0D 100%)`,
-              borderLeft: `3px solid ${color}`,
+              backgroundColor: `${color}10`,
               minHeight: 24,
               willChange: isBeingDragged ? 'transform' : undefined,
             }}
             onMouseDown={(e) => handleEventMouseDown(e, event.id, 'move')}
           >
-            <div className="flex flex-col gap-0.5 h-full">
+            <div className="flex flex-col gap-0.5 h-full px-3 py-1.5">
               <div className="flex items-center gap-2 min-w-0">
-                {/* Action buttons inline with title */}
                 {!event.isGoogleEvent && (
                   <div className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
@@ -222,15 +232,13 @@ function DayColumn({
                       }}
                       onMouseDown={(e) => e.stopPropagation()}
                       title={completed ? 'Mark incomplete' : 'Mark done'}
-                      className={`w-7 h-7 rounded-md flex items-center justify-center transition-all cursor-pointer ${
+                      className={`w-6 h-6 rounded flex items-center justify-center transition-all cursor-pointer ${
                         completed
-                          ? 'bg-[#FF3300]/20 text-[#FF3300] !opacity-100'
-                          : 'hover:bg-white/10 text-[#888] hover:text-white'
+                          ? 'bg-success/20 text-success'
+                          : 'hover:bg-elevated text-dim hover:text-success'
                       }`}
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                      </svg>
+                      <Check className="w-3.5 h-3.5" />
                     </button>
                     {onReschedule && (
                       <button
@@ -240,11 +248,9 @@ function DayColumn({
                         }}
                         onMouseDown={(e) => e.stopPropagation()}
                         title="Move back to tasks"
-                        className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-white/10 text-[#888] hover:text-white transition-all cursor-pointer"
+                        className="w-6 h-6 rounded flex items-center justify-center hover:bg-elevated text-dim hover:text-primary transition-all cursor-pointer"
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
+                        <RotateCcw className="w-3.5 h-3.5" />
                       </button>
                     )}
                     <button
@@ -252,47 +258,39 @@ function DayColumn({
                         e.stopPropagation()
                         onEventDelete(event.id)
                       }}
-                      className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-white/10 text-[#888] hover:text-red-400 transition-all cursor-pointer"
+                      className="w-6 h-6 rounded flex items-center justify-center hover:bg-elevated text-dim hover:text-critical transition-all cursor-pointer"
                       onMouseDown={(e) => e.stopPropagation()}
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
+                      <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 )}
-                <p className={`text-xs font-medium truncate leading-tight ${completed ? 'line-through text-[#555]' : 'text-white'}`}>
+                <p className={`text-xs font-medium truncate leading-tight ${completed ? 'line-through text-dim' : 'text-primary'}`}>
                   {event.title}
                 </p>
               </div>
               {pos.height > 36 && (
-                <p className="text-[10px] text-[#555]">
+                <p className="text-[10px] text-dim">
                   {formatTime(event.start)} - {formatTime(event.end)}
                 </p>
               )}
             </div>
 
-            {/* Resize handle */}
             {!event.isGoogleEvent && (
               <div
                 className="absolute bottom-0 left-0 right-0 h-2 cursor-s-resize rounded-b-lg hover:bg-white/5"
                 onMouseDown={(e) => handleEventMouseDown(e, event.id, 'resize')}
               />
             )}
-          </div>
+          </motion.div>
         )
       })}
 
-      {/* Current time indicator */}
       {isToday && <CurrentTimeLine dayOffset={dayOffset} />}
     </div>
   )
 
-  function handleEventMouseDown(
-    e: React.MouseEvent,
-    eventId: string,
-    type: 'move' | 'resize',
-  ) {
+  function handleEventMouseDown(e: React.MouseEvent, eventId: string, type: 'move' | 'resize') {
     onEventMouseDown(e, eventId, type)
   }
 }
@@ -321,7 +319,6 @@ export default function CalendarView({
 
   const hours = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i)
 
-  // Compute visible dates
   const visibleDates: Date[] = []
   if (viewMode === '3-day') {
     for (let i = 0; i < 3; i++) {
@@ -333,7 +330,6 @@ export default function CalendarView({
     visibleDates.push(new Date(viewDate))
   }
 
-  // Compute day targets for 1-day view drag
   const dayTargets: { dateStr: string; label: string }[] = []
   if (viewMode === '1-day' && isTaskDragging) {
     for (let i = 1; i <= 3; i++) {
@@ -344,11 +340,7 @@ export default function CalendarView({
     }
   }
 
-  function handleEventMouseDown(
-    e: React.MouseEvent,
-    eventId: string,
-    type: 'move' | 'resize',
-  ) {
+  function handleEventMouseDown(e: React.MouseEvent, eventId: string, type: 'move' | 'resize') {
     e.preventDefault()
     e.stopPropagation()
     const event = events.find((ev) => ev.id === eventId)
@@ -365,13 +357,11 @@ export default function CalendarView({
   const handleMouseMove = useCallback(
     (e: MouseEvent) => {
       if (!dragState) return
-
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
 
       rafRef.current = requestAnimationFrame(() => {
         const deltaY = e.clientY - dragState.startY
-        const deltaMinutes =
-          Math.round(deltaY / (HOUR_HEIGHT / 60) / SLOT_MINUTES) * SLOT_MINUTES
+        const deltaMinutes = Math.round(deltaY / (HOUR_HEIGHT / 60) / SLOT_MINUTES) * SLOT_MINUTES
 
         if (dragState.type === 'move') {
           const newStart = new Date(dragState.originalStart.getTime() + deltaMinutes * 60000)
@@ -411,7 +401,6 @@ export default function CalendarView({
     }
   }, [dragState, handleMouseMove, handleMouseUp])
 
-  // Scroll to current time on mount
   useEffect(() => {
     if (containerRef.current) {
       const now = new Date()
@@ -422,38 +411,36 @@ export default function CalendarView({
   }, [])
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 gap-2">
-      {/* Day target drop zones — shown above calendar during task drag in 1-day view */}
+    <div className="h-full w-full bg-deep flex flex-col relative overflow-hidden">
+      <div className="p-6 border-b border-border bg-surface/80 backdrop-blur-sm z-10">
+        <h2 className="text-lg font-semibold text-primary">Schedule</h2>
+        <p className="text-secondary text-sm mt-1">Your timeline for today.</p>
+      </div>
+
       {dayTargets.length > 0 && (
-        <div className="flex gap-2 animate-[fadeIn_0.15s_ease-out]">
+        <div className="flex gap-2 p-4 animate-[fadeIn_0.15s_ease-out]">
           {dayTargets.map((target) => (
             <DayTargetDropZone key={target.dateStr} dateStr={target.dateStr} label={target.label} />
           ))}
         </div>
       )}
 
-      {/* Calendar grid */}
-      <div
-        ref={containerRef}
-        className="flex-1 overflow-y-auto min-h-0 bg-black/70 rounded-xl border border-white/[0.06]"
-      >
+      <div ref={containerRef} className="flex-1 overflow-y-auto">
         <div className="flex" style={{ minHeight: (END_HOUR - START_HOUR) * HOUR_HEIGHT }}>
-          {/* Time labels column */}
-          <div className="w-12 flex-shrink-0 relative">
+          <div className="w-14 flex-shrink-0 relative">
             {hours.map((hour) => (
               <div
                 key={hour}
                 className="absolute left-0 right-0"
                 style={{ top: (hour - START_HOUR) * HOUR_HEIGHT }}
               >
-                <span className="absolute -top-2.5 left-2 text-[10px] font-medium text-[#444]">
+                <span className="absolute -top-2.5 right-3 text-xs font-medium text-secondary">
                   {formatHour(hour)}
                 </span>
               </div>
             ))}
           </div>
 
-          {/* Day columns */}
           {visibleDates.map((date, i) => (
             <DayColumn
               key={dateToString(date)}
@@ -462,6 +449,7 @@ export default function CalendarView({
               dayOffset={i}
               isMultiDay={viewMode === '3-day'}
               dragState={dragState}
+              isTaskDragging={isTaskDragging}
               onEventMouseDown={handleEventMouseDown}
               onEventUpdate={onEventUpdate}
               onEventDelete={onEventDelete}
