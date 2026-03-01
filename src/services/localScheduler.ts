@@ -65,10 +65,6 @@ export function scheduleLocally(
     // "before X" time
     const beforeMatch = lower.match(/before (\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i)
     if (beforeMatch) {
-      let hour = parseInt(beforeMatch[1])
-      const min = beforeMatch[2] ? parseInt(beforeMatch[2]) : 0
-      if (beforeMatch[3]?.toLowerCase() === 'pm' && hour < 12) hour += 12
-      if (beforeMatch[3]?.toLowerCase() === 'am' && hour === 12) hour = 0
       return { start: 8 * 60, exact: false } // start early, just need to finish before
     }
 
