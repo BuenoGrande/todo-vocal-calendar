@@ -9,7 +9,8 @@ import {
 } from '@dnd-kit/core'
 import { arrayMove } from '@dnd-kit/sortable'
 import { motion, AnimatePresence } from 'framer-motion'
-import type { TodoItem, CalendarEvent, ViewMode } from './types'
+import { Plus } from 'lucide-react'
+import type { TodoItem, CalendarEvent, ViewMode, TaskList } from './types'
 import { parseTasks } from './services/llm'
 import { scheduleLocally } from './services/localScheduler'
 import {
@@ -50,6 +51,7 @@ import ParticleTrail from './components/ParticleTrail'
 const GOOGLE_EVENT_COLOR = '#4A90D9'
 const XP_PER_TASK = 25
 const XP_PER_LEVEL = 100
+const LISTS_STORAGE_KEY = 'shout_task_lists'
 
 /** Priority-based color: index 0 (most urgent) = vivid red, last = muted grey */
 function getPriorityColor(index: number, total: number): string {
@@ -85,6 +87,21 @@ function computeStreak(stats: { date: string; tasksCompleted: number }[]): numbe
   return streak
 }
 
+function loadLists(): TaskList[] {
+  try {
+    const stored = localStorage.getItem(LISTS_STORAGE_KEY)
+    if (stored) {
+      const parsed = JSON.parse(stored)
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+    }
+  } catch { /* ignore */ }
+  return [{ name: 'Default', collapsed: false }]
+}
+
+function saveLists(lists: TaskList[]) {
+  localStorage.setItem(LISTS_STORAGE_KEY, JSON.stringify(lists))
+}
+
 const INITIAL_ACHIEVEMENTS: Achievement[] = [
   { id: 'a1', name: 'First Win', description: 'Complete your first task.', icon: 'CheckCircle', unlocked: false, category: 'Productivity' },
   { id: 'a2', name: 'Week Warrior', description: 'Maintain a 7-day streak.', icon: 'Flame', unlocked: false, category: 'Consistency' },
@@ -98,6 +115,7 @@ export default function App() {
   const [todos, setTodos] = useState<TodoItem[]>([])
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([])
   const [isScheduling, setIsScheduling] = useState(false)
+  const [schedulingList, setSchedulingList] = useState<string | null>(null)
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
   const [dragPosition, setDragPosition] = useState({ x: 0, y: 0 })
   const [toast, setToast] = useState<string | null>(null)
@@ -112,6 +130,12 @@ export default function App() {
     freeFrom: Date
     duration: number
   } | null>(null)
+
+  // Multi-list state
+  const [lists, setLists] = useState<TaskList[]>(loadLists)
+  const [voiceTargetList, setVoiceTargetList] = useState<string>('Default')
+  const [addingList, setAddingList] = useState(false)
+  const [newListName, setNewListName] = useState('')
 
   // New UI state
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false)
@@ -135,9 +159,62 @@ export default function App() {
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   )
 
+  // Persist lists to localStorage
+  useEffect(() => {
+    saveLists(lists)
+  }, [lists])
+
+  // Ensure all existing tasks have a valid listName that matches a list
+  useEffect(() => {
+    if (todos.length === 0 || lists.length === 0) return
+    const listNames = new Set(lists.map((l) => l.name))
+    const needsUpdate = todos.some((t) => !listNames.has(t.listName))
+    if (needsUpdate) {
+      const firstList = lists[0].name
+      setTodos((prev) => prev.map((t) => listNames.has(t.listName) ? t : { ...t, listName: firstList }))
+    }
+  }, [lists, todos])
+
   function showToast(msg: string) {
     setToast(msg)
     setTimeout(() => setToast(null), 3000)
+  }
+
+  // ── List management ──
+
+  function handleAddList(name: string) {
+    const trimmed = name.trim()
+    if (!trimmed || lists.some((l) => l.name === trimmed)) return
+    setLists((prev) => [...prev, { name: trimmed, collapsed: false }])
+  }
+
+  async function handleRenameList(oldName: string, newName: string) {
+    const trimmed = newName.trim()
+    if (!trimmed || trimmed === oldName || lists.some((l) => l.name === trimmed)) return
+    setLists((prev) => prev.map((l) => l.name === oldName ? { ...l, name: trimmed } : l))
+    // Update all tasks in this list
+    const tasksInList = todos.filter((t) => t.listName === oldName)
+    setTodos((prev) => prev.map((t) => t.listName === oldName ? { ...t, listName: trimmed } : t))
+    for (const task of tasksInList) {
+      updateTask(task.id, { listName: trimmed }).catch(console.error)
+    }
+  }
+
+  async function handleDeleteList(name: string) {
+    if (lists.length <= 1) return
+    const remaining = lists.filter((l) => l.name !== name)
+    const targetList = remaining[0].name
+    // Move tasks to first remaining list
+    const tasksToMove = todos.filter((t) => t.listName === name)
+    setTodos((prev) => prev.map((t) => t.listName === name ? { ...t, listName: targetList } : t))
+    setLists(remaining)
+    for (const task of tasksToMove) {
+      updateTask(task.id, { listName: targetList }).catch(console.error)
+    }
+  }
+
+  function handleToggleListCollapse(name: string) {
+    setLists((prev) => prev.map((l) => l.name === name ? { ...l, collapsed: !l.collapsed } : l))
   }
 
   // Load data from Supabase on auth
@@ -157,6 +234,19 @@ export default function App() {
         setCompletedToday(stats.tasksCompleted)
         setStreak(computeStreak(recentStats))
         setDataLoaded(true)
+
+        // Ensure lists exist for all task listNames
+        const taskListNames = new Set(tasks.map((t) => t.listName))
+        setLists((prev) => {
+          const existingNames = new Set(prev.map((l) => l.name))
+          const newLists = [...prev]
+          for (const name of taskListNames) {
+            if (!existingNames.has(name)) {
+              newLists.push({ name, collapsed: false })
+            }
+          }
+          return newLists
+        })
 
         // Unlock achievements based on data
         if (stats.tasksCompleted > 0) {
@@ -258,16 +348,17 @@ export default function App() {
   }, [googleToken, user, viewDate, viewMode])
 
   // Add todo
-  async function handleAddTodo(title: string, duration: number) {
+  async function handleAddTodo(title: string, duration: number, listName: string) {
     if (!user) return
-    const priority = todos.length
+    const listTodos = todos.filter((t) => t.listName === listName)
+    const priority = listTodos.length
     const tempId = crypto.randomUUID()
-    const newTodo: TodoItem = { id: tempId, title, duration, priority }
+    const newTodo: TodoItem = { id: tempId, title, duration, priority, listName }
 
     setTodos((prev) => [...prev, newTodo])
 
     try {
-      const created = await createTask({ title, duration, priority }, user.id)
+      const created = await createTask({ title, duration, priority, listName }, user.id)
       setTodos((prev) => prev.map((t) => (t.id === tempId ? created : t)))
       await incrementCompletionStats(user.id, dateToString(new Date()), 'tasks_created')
     } catch (err) {
@@ -305,6 +396,7 @@ export default function App() {
         showToast('Parsing tasks...')
         const tasks = await parseTasks(text)
         const sorted = [...tasks].sort((a, b) => a.priority - b.priority)
+        const targetList = voiceTargetList
         const newTodos: TodoItem[] = sorted.map((t, i) => ({
           id: crypto.randomUUID(),
           title: t.title,
@@ -312,18 +404,21 @@ export default function App() {
           priority: i,
           timePreference: t.timePreference,
           location: t.location,
+          listName: targetList,
         }))
 
         setTodos((prev) => {
-          const renumbered = prev.map((t, i) => ({ ...t, priority: newTodos.length + i }))
-          return [...newTodos, ...renumbered]
+          const inList = prev.filter((t) => t.listName === targetList)
+          const renumbered = inList.map((t, i) => ({ ...t, priority: newTodos.length + i }))
+          const others = prev.filter((t) => t.listName !== targetList)
+          return [...newTodos, ...renumbered, ...others]
         })
 
         const createdTodos: TodoItem[] = []
         for (const todo of newTodos) {
           try {
             const created = await createTask(
-              { title: todo.title, duration: todo.duration, priority: todo.priority, timePreference: todo.timePreference },
+              { title: todo.title, duration: todo.duration, priority: todo.priority, timePreference: todo.timePreference, listName: targetList },
               user.id,
             )
             createdTodos.push(created)
@@ -340,37 +435,41 @@ export default function App() {
               updated = updated.map((t) => (t.id === newTodos[i].id ? createdTodos[i] : t))
             }
           }
-          const existing = updated.filter((t) => !newTodos.some((n) => n.id === t.id))
+          const existing = updated.filter((t) => t.listName === targetList && !newTodos.some((n) => n.id === t.id))
           reorderTasks(existing.map((t, i) => ({ id: t.id, priority: newTodos.length + i }))).catch(console.error)
           return updated
         })
 
-        showToast(`Added ${newTodos.length} task${newTodos.length !== 1 ? 's' : ''}`)
+        showToast(`Added ${newTodos.length} task${newTodos.length !== 1 ? 's' : ''} to ${targetList}`)
       } catch (err) {
         console.error('Task parsing error:', err)
         showToast(`Parsing failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
       }
     },
-    [user],
+    [user, voiceTargetList],
   )
 
-  // Schedule all tasks
-  async function handleAISchedule() {
-    if (todos.length === 0 || !user) return
+  // Schedule tasks for a specific list
+  async function handleAISchedule(listName: string) {
+    const listTodos = todos.filter((t) => t.listName === listName)
+    if (listTodos.length === 0 || !user) return
     setIsScheduling(true)
+    setSchedulingList(listName)
     const t0 = performance.now()
 
-    const schedule = scheduleLocally(todos, calendarEvents, viewDate)
+    // Pass list's tasks for scheduling, but ALL events for conflict avoidance
+    const schedule = scheduleLocally(listTodos, calendarEvents, viewDate)
     console.log(`[SHOUT] Local scheduling: ${(performance.now() - t0).toFixed(0)}ms`)
 
     if (schedule.length === 0) {
       showToast('No available time slots')
       setIsScheduling(false)
+      setSchedulingList(null)
       return
     }
 
     const eventDataList = schedule.map((item, i) => {
-      const todo = todos.find((t) => t.id === item.todoId)!
+      const todo = listTodos.find((t) => t.id === item.todoId)!
       const [hours, minutes] = item.startTime.split(':').map(Number)
       const start = new Date(viewDate)
       start.setHours(hours, minutes, 0, 0)
@@ -427,7 +526,7 @@ export default function App() {
       })
 
       console.log(`[SHOUT] Total: ${(performance.now() - t0).toFixed(0)}ms`)
-      showToast(`Scheduled ${createdEvents.length} task${createdEvents.length !== 1 ? 's' : ''}`)
+      showToast(`Scheduled ${createdEvents.length} task${createdEvents.length !== 1 ? 's' : ''} from ${listName}`)
     } catch (err) {
       console.error('Scheduling error:', err)
       setCalendarEvents((prev) => prev.filter((e) => !e.id.startsWith('placeholder-')))
@@ -436,6 +535,7 @@ export default function App() {
       showToast(`Scheduling failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
     } finally {
       setIsScheduling(false)
+      setSchedulingList(null)
     }
   }
 
@@ -586,12 +686,13 @@ export default function App() {
       await deleteEvent(event.id).catch(console.error)
 
       const duration = Math.round((event.end.getTime() - event.start.getTime()) / 60000)
-      const priority = todos.length
-      const created = await createTask({ title: event.title, duration, priority }, user.id)
+      const firstList = lists[0].name
+      const priority = todos.filter((t) => t.listName === firstList).length
+      const created = await createTask({ title: event.title, duration, priority, listName: firstList }, user.id)
       setTodos((prev) => [...prev, created])
-      showToast(`"${event.title}" moved back to tasks`)
+      showToast(`"${event.title}" moved back to ${firstList}`)
     },
-    [googleToken, todos.length, user],
+    [googleToken, todos, user, lists],
   )
 
   // Clear all events
@@ -727,15 +828,21 @@ export default function App() {
       setTodos((prev) => prev.filter((t) => t.id !== activeId))
       await deleteTask(activeId).catch(console.error)
     } else {
+      // Reorder within same list
       if (activeId !== overId) {
-        setTodos((prev) => {
-          const oldIndex = prev.findIndex((t) => t.id === activeId)
-          const newIndex = prev.findIndex((t) => t.id === overId)
-          if (oldIndex === -1 || newIndex === -1) return prev
-          const reordered = arrayMove(prev, oldIndex, newIndex)
-          reorderTasks(reordered.map((t, i) => ({ id: t.id, priority: i }))).catch(console.error)
-          return reordered
-        })
+        const activeTodo = todos.find((t) => t.id === activeId)
+        const overTodo = todos.find((t) => t.id === overId)
+        if (activeTodo && overTodo && activeTodo.listName === overTodo.listName) {
+          setTodos((prev) => {
+            const oldIndex = prev.findIndex((t) => t.id === activeId)
+            const newIndex = prev.findIndex((t) => t.id === overId)
+            if (oldIndex === -1 || newIndex === -1) return prev
+            const reordered = arrayMove(prev, oldIndex, newIndex)
+            const listTasks = reordered.filter((t) => t.listName === activeTodo.listName)
+            reorderTasks(listTasks.map((t, i) => ({ id: t.id, priority: i }))).catch(console.error)
+            return reordered
+          })
+        }
       }
     }
   }
@@ -803,7 +910,6 @@ export default function App() {
           xp={xpInLevel}
           xpToNextLevel={XP_PER_LEVEL}
           streak={streak}
-          onNewTask={() => setIsVoiceModalOpen(true)}
           onOpenAchievements={() => setIsAchievementsOpen(true)}
           onToggleGoals={() => setIsGoalsOpen(!isGoalsOpen)}
         />
@@ -813,16 +919,77 @@ export default function App() {
         </div>
 
         <main className="flex-1 flex overflow-hidden relative z-10">
-          {/* Task backlog panel */}
-          <div className="w-[40%] xl:w-[35%] h-full shrink-0">
-            <TodoList
-              todos={todos}
-              onAddTodo={handleAddTodo}
-              onUpdateTodo={handleUpdateTodo}
-              onDeleteTodo={handleDeleteTodo}
-              onAutoSchedule={handleAISchedule}
-              isScheduling={isScheduling}
-            />
+          {/* Task lists panel */}
+          <div className="w-[40%] xl:w-[35%] h-full shrink-0 overflow-y-auto border-r border-border bg-surface">
+            <div className="p-4 flex flex-col gap-4">
+              {lists.map((list) => {
+                const listTodos = todos.filter((t) => t.listName === list.name)
+                return (
+                  <TodoList
+                    key={list.name}
+                    todos={listTodos}
+                    listName={list.name}
+                    collapsed={list.collapsed}
+                    onToggleCollapse={() => handleToggleListCollapse(list.name)}
+                    onRename={(newName) => handleRenameList(list.name, newName)}
+                    onDelete={() => handleDeleteList(list.name)}
+                    onOpenVoice={() => {
+                      setVoiceTargetList(list.name)
+                      setIsVoiceModalOpen(true)
+                    }}
+                    canDelete={lists.length > 1}
+                    onAddTodo={(title, duration) => handleAddTodo(title, duration, list.name)}
+                    onUpdateTodo={handleUpdateTodo}
+                    onDeleteTodo={handleDeleteTodo}
+                    onAutoSchedule={() => handleAISchedule(list.name)}
+                    isScheduling={isScheduling && schedulingList === list.name}
+                  />
+                )
+              })}
+
+              {/* Add list button */}
+              {addingList ? (
+                <div className="flex gap-2">
+                  <input
+                    value={newListName}
+                    onChange={(e) => setNewListName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleAddList(newListName)
+                        setNewListName('')
+                        setAddingList(false)
+                      }
+                      if (e.key === 'Escape') {
+                        setNewListName('')
+                        setAddingList(false)
+                      }
+                    }}
+                    autoFocus
+                    placeholder="List name..."
+                    className="flex-1 px-3 py-2 text-sm bg-elevated border border-border rounded-lg text-primary focus:outline-none focus:border-accent/50 placeholder-dim"
+                  />
+                  <button
+                    onClick={() => {
+                      handleAddList(newListName)
+                      setNewListName('')
+                      setAddingList(false)
+                    }}
+                    disabled={!newListName.trim()}
+                    className="px-3 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-glow disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                  >
+                    Add
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setAddingList(true)}
+                  className="flex items-center justify-center gap-2 py-2.5 text-sm font-medium text-secondary hover:text-primary border border-dashed border-border hover:border-accent/50 rounded-lg transition-colors cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add List
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Schedule panel */}

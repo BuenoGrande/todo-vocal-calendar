@@ -1,6 +1,5 @@
-import { useState, useRef, useCallback } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Mic, X } from 'lucide-react'
+import { useState, useRef, useCallback, useEffect } from 'react'
+import { Mic, Square } from 'lucide-react'
 
 interface VoiceInputModalProps {
   isOpen: boolean
@@ -10,8 +9,20 @@ interface VoiceInputModalProps {
 
 export default function VoiceInputModal({ isOpen, onClose, onTranscription }: VoiceInputModalProps) {
   const [phase, setPhase] = useState<'idle' | 'listening' | 'processing'>('idle')
+  const [seconds, setSeconds] = useState(0)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Auto-start recording when opened
+  useEffect(() => {
+    if (isOpen && phase === 'idle') {
+      startRecording()
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
+  }, [isOpen])
 
   const startRecording = useCallback(async () => {
     try {
@@ -19,6 +30,9 @@ export default function VoiceInputModal({ isOpen, onClose, onTranscription }: Vo
       const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
       mediaRecorderRef.current = mediaRecorder
       chunksRef.current = []
+      setSeconds(0)
+
+      timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000)
 
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data)
@@ -26,10 +40,12 @@ export default function VoiceInputModal({ isOpen, onClose, onTranscription }: Vo
 
       mediaRecorder.onstop = async () => {
         stream.getTracks().forEach((track) => track.stop())
+        if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
         const audioBlob = new Blob(chunksRef.current, { type: 'audio/webm' })
 
         if (audioBlob.size < 1000) {
           setPhase('idle')
+          onClose()
           return
         }
 
@@ -39,12 +55,13 @@ export default function VoiceInputModal({ isOpen, onClose, onTranscription }: Vo
           const text = await transcribe(audioBlob)
           if (text.trim()) {
             onTranscription(text)
-            onClose()
           }
         } catch (err) {
           console.error('Transcription error:', err)
         } finally {
           setPhase('idle')
+          setSeconds(0)
+          onClose()
         }
       }
 
@@ -52,6 +69,7 @@ export default function VoiceInputModal({ isOpen, onClose, onTranscription }: Vo
       setPhase('listening')
     } catch (err) {
       console.error('Microphone access error:', err)
+      onClose()
     }
   }, [onTranscription, onClose])
 
@@ -61,93 +79,73 @@ export default function VoiceInputModal({ isOpen, onClose, onTranscription }: Vo
     }
   }, [])
 
-  const handleMicClick = () => {
+  const handleStop = () => {
     if (phase === 'listening') {
       stopRecording()
-    } else if (phase === 'idle') {
-      startRecording()
     }
   }
 
-  const handleClose = () => {
-    if (phase === 'listening') stopRecording()
-    setPhase('idle')
-    onClose()
+  const handleCancel = () => {
+    if (phase === 'listening') {
+      // Discard the recording
+      if (mediaRecorderRef.current?.state === 'recording') {
+        const stream = mediaRecorderRef.current.stream
+        mediaRecorderRef.current.ondataavailable = null
+        mediaRecorderRef.current.onstop = () => {
+          stream.getTracks().forEach((track) => track.stop())
+        }
+        mediaRecorderRef.current.stop()
+      }
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+      setPhase('idle')
+      setSeconds(0)
+      onClose()
+    }
   }
 
   if (!isOpen) return null
 
+  const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+
   return (
-    <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="absolute inset-0 bg-deep/80 backdrop-blur-sm"
-          onClick={handleClose}
-        />
-
-        <motion.div
-          initial={{ scale: 0.9, opacity: 0, y: 20 }}
-          animate={{ scale: 1, opacity: 1, y: 0 }}
-          exit={{ scale: 0.9, opacity: 0, y: -20 }}
-          className="relative z-10 bg-surface border border-border rounded-2xl p-8 flex flex-col items-center shadow-2xl w-full max-w-md"
-        >
-          <button
-            onClick={handleClose}
-            className="absolute top-4 right-4 p-1.5 text-secondary hover:text-primary hover:bg-elevated rounded-md transition-colors cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
-
-          <div
-            className="w-16 h-16 rounded-full bg-accent/20 flex items-center justify-center mb-6 relative cursor-pointer"
-            onClick={handleMicClick}
-          >
-            {phase === 'listening' && (
-              <motion.div
-                className="absolute inset-0 rounded-full bg-accent/30"
-                animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }}
-                transition={{ repeat: Infinity, duration: 2 }}
-              />
-            )}
-            {phase === 'processing' ? (
-              <svg className="w-8 h-8 animate-spin text-accent" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-            ) : (
-              <Mic className={`w-8 h-8 relative z-10 ${phase === 'listening' ? 'text-accent' : 'text-secondary'}`} />
-            )}
-          </div>
-
-          {/* Audio waveform */}
-          <div className="flex items-center gap-1.5 h-12 mb-4">
-            {[...Array(7)].map((_, i) => (
-              <motion.div
-                key={i}
-                className="w-1.5 bg-accent rounded-full"
-                animate={{
-                  height: phase === 'listening' ? ['20%', '100%', '20%'] : '20%',
-                  opacity: phase === 'processing' ? 0.5 : phase === 'listening' ? 1 : 0.3,
-                }}
-                transition={{
-                  repeat: Infinity,
-                  duration: 0.5 + Math.random() * 0.5,
-                  delay: i * 0.1,
-                }}
-              />
-            ))}
-          </div>
-
-          <p className="text-secondary font-medium text-sm">
-            {phase === 'idle' && 'Tap the microphone to start'}
-            {phase === 'listening' && 'Listening... Tap to stop'}
-            {phase === 'processing' && 'Parsing tasks...'}
-          </p>
-        </motion.div>
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+      <div className="flex items-center gap-3 px-4 py-2.5 bg-surface border border-border rounded-xl shadow-lg">
+        {phase === 'listening' && (
+          <>
+            <div className="w-2.5 h-2.5 rounded-full bg-critical animate-pulse shrink-0" />
+            <span className="text-sm text-primary font-medium tabular-nums">{formatTime(seconds)}</span>
+            <span className="text-sm text-secondary">Recording...</span>
+            <button
+              onClick={handleStop}
+              className="ml-2 flex items-center gap-1.5 px-3 py-1.5 bg-accent text-white text-xs font-semibold rounded-md hover:bg-accent-glow transition-colors cursor-pointer"
+            >
+              <Square className="w-3 h-3 fill-current" />
+              Done
+            </button>
+            <button
+              onClick={handleCancel}
+              className="px-3 py-1.5 text-xs text-dim hover:text-primary transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+          </>
+        )}
+        {phase === 'processing' && (
+          <>
+            <svg className="w-4 h-4 animate-spin text-accent shrink-0" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            <span className="text-sm text-secondary">Parsing tasks...</span>
+          </>
+        )}
+        {phase === 'idle' && (
+          <>
+            <Mic className="w-4 h-4 text-secondary" />
+            <span className="text-sm text-secondary">Starting microphone...</span>
+          </>
+        )}
       </div>
-    </AnimatePresence>
+    </div>
   )
 }

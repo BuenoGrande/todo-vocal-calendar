@@ -84,7 +84,7 @@ export default function TaskCard({
     <motion.div
       whileHover={!isDragging ? { y: -2 } : {}}
       className={`
-        relative overflow-hidden rounded-lg border border-border border-l-4 ${config.border} bg-surface
+        relative rounded-lg border border-border border-l-4 ${config.border} bg-surface
         ${!isDragging ? config.hover : ''}
         ${isDragging ? 'opacity-50 scale-95 shadow-xl' : 'opacity-100 shadow-sm'}
         transition-all duration-200
@@ -162,7 +162,7 @@ export default function TaskCard({
               {showDurationDropdown && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setShowDurationDropdown(false)} />
-                  <div className="absolute top-full left-0 mt-1 bg-elevated border border-border rounded-lg shadow-xl z-20 py-1 min-w-[80px]">
+                  <div className="absolute left-full top-0 ml-2 bg-elevated border border-border rounded-lg shadow-xl z-20 py-1 min-w-[80px]">
                     {DURATION_OPTIONS.map((dur) => (
                       <button
                         key={dur}

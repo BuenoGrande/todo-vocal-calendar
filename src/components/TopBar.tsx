@@ -1,4 +1,4 @@
-import { Mic, Trophy, Target } from 'lucide-react'
+import { Trophy, Target } from 'lucide-react'
 import XPBar from './XPBar'
 import StreakCounter from './StreakCounter'
 import GoogleCalendarButton from './GoogleCalendarButton'
@@ -8,7 +8,6 @@ interface TopBarProps {
   xp: number
   xpToNextLevel: number
   streak: number
-  onNewTask: () => void
   onOpenAchievements: () => void
   onToggleGoals: () => void
 }
@@ -18,7 +17,6 @@ export default function TopBar({
   xp,
   xpToNextLevel,
   streak,
-  onNewTask,
   onOpenAchievements,
   onToggleGoals,
 }: TopBarProps) {
@@ -59,14 +57,6 @@ export default function TopBar({
             title="Achievements"
           >
             <Trophy className="w-4 h-4" />
-          </button>
-
-          <button
-            onClick={onNewTask}
-            className="ml-2 px-4 h-9 rounded-md bg-accent text-white hover:bg-accent-glow flex items-center gap-2 transition-colors font-medium text-sm shadow-sm cursor-pointer"
-          >
-            <Mic className="w-4 h-4" />
-            <span>New Task</span>
           </button>
         </div>
       </div>

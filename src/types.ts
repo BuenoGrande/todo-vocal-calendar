@@ -5,6 +5,12 @@ export interface TodoItem {
   priority: number
   timePreference?: string // e.g. "morning", "after lunch", "before 3pm"
   location?: string
+  listName: string
+}
+
+export interface TaskList {
+  name: string
+  collapsed: boolean
 }
 
 export interface CalendarEvent {

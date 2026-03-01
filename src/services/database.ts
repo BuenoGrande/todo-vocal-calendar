@@ -17,6 +17,7 @@ export async function fetchTasks(): Promise<TodoItem[]> {
     duration: row.duration,
     priority: row.priority,
     timePreference: row.time_preference ?? undefined,
+    listName: row.list_name ?? 'Default',
   }))
 }
 
@@ -29,6 +30,7 @@ export async function createTask(task: Omit<TodoItem, 'id'>, userId: string): Pr
       duration: task.duration,
       priority: task.priority,
       time_preference: task.timePreference ?? null,
+      list_name: task.listName ?? 'Default',
     })
     .select()
     .single()
@@ -40,6 +42,7 @@ export async function createTask(task: Omit<TodoItem, 'id'>, userId: string): Pr
     duration: data.duration,
     priority: data.priority,
     timePreference: data.time_preference ?? undefined,
+    listName: data.list_name ?? 'Default',
   }
 }
 
@@ -49,6 +52,7 @@ export async function updateTask(id: string, updates: Partial<TodoItem>): Promis
   if (updates.duration !== undefined) dbUpdates.duration = updates.duration
   if (updates.priority !== undefined) dbUpdates.priority = updates.priority
   if (updates.timePreference !== undefined) dbUpdates.time_preference = updates.timePreference
+  if (updates.listName !== undefined) dbUpdates.list_name = updates.listName
 
   const { error } = await supabase.from('tasks').update(dbUpdates).eq('id', id)
   if (error) throw error
